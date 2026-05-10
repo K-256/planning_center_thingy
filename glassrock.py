@@ -360,20 +360,14 @@ def live_timing_front():
                 os.system("clear")
                 #print time data
                 if short_display:
-                    # displaystring = f"""
-                    #     {color.YELLOW}--P/S--{color.RESET}
-                    #     {service_time_name[:7] if service_time_name != None else ""}
-                    #     {time_remaining_min}:{time_remaining_sec}
-                    # """
-                    # print(displaystring)
-                    print(f"{time_remaining_min}:{time_remaining_sec}", end="")
+                    print(f"{time_remaining_min}:{time_remaining_sec}", end="", flush=True)
                 else:  
                     print(f"{color.BOLD}{color.CYAN}{current_plan_name}{color.RESET}")
                     print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}")
-                    print(f"{color.YELLOW}-------------PRESERVICE--------------{color.RESET}")
-                    print(f"{color.MAGENTA}NEXT SERVICE TIME: {color.RESET}{color.RED if time_remaining < 0 else ''}{service_time}Z")
-                    print(f"{color.MAGENTA}NEXT SERVICE NAME: {color.RESET}{service_time_name}")
-                    print(f"{color.GREEN}NEXT SERVICE IN: {color.RESET}{time_remaining_min}:{time_remaining_sec}")
+                    print(f"{color.YELLOW}------P/S-----{color.RESET}")
+                    #print(f"{color.MAGENTA}NEXT SERVICE TIME: {color.RESET}{color.RED if time_remaining < 0 else ''}{service_time}Z")
+                    print(f"{color.MAGENTA}NEXT SERVICE TIME: {color.RESET}{service_time_name}")
+                    print(f"{color.GREEN}TIME TO SERVICE: {color.RESET}{time_remaining_min}:{time_remaining_sec}")
                 time.sleep(0.8)
             elif preservice_mode == 0: #service mode
                 current_item_time_data = current_item
@@ -393,8 +387,7 @@ def live_timing_front():
                 flag = [color.RED if time_remaining < 0 else color.GREEN][0] #green text if on time, red if behind
                 os.system("clear")
                 if short_display:
-                    print(f"{color.BOLD}{color.RED if time_remaining < 0 else color.GREEN}{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}")
-                    print(f"{color.RED if time_remaining < 0 else color.GREEN}{other_item_time_data['title'][:7]}{color.RESET}")
+                    print(f"{color.BOLD}{color.RED if time_remaining < 0 else color.GREEN}{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}", end="", flush=True)
                 else:
                     print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}\n")
                     print(f"{color.BOLD}{flag}TIME ELAPSED:", time_elapsed)
@@ -421,7 +414,8 @@ def time_json_server():
             self.send_response(200)
             self.send_header("Content-type", "application/octet-stream")
             self.end_headers()
-            self.wfile.write("{ \"time\""+f": \"{time_string}\" "+"}")
+            s = "{ \"time\""+f": \"{time_string}\" "+"}"
+            self.wfile.write(s)
 
     with socketserver.TCPServer(("", TIMEJSON_PORT), SingleFileHandler) as httpd:
         print(f"TIMEJSON SERVER STARTED ON PORT {TIMEJSON_PORT}")
