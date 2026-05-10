@@ -36,7 +36,7 @@ filter_forward_days = 4
 #how many days to look forward for for plans
 threading_load_plans = True
 #load service_types/plans in threaded mode
-short_display = False
+short_display = True
 #short display mode (not implemented yet)
 
 
@@ -61,7 +61,8 @@ configure_map = {
     "preroll_offset": "negative int of preroll length in seconds (eg. -127)",
     "filter_for_today_only": "True/False (capitalized first letter)",
     "filter_forward_days": "number of days to look at in advance for plans",
-    "threading_load_plans": "enable multithreader for plans loading"
+    "threading_load_plans": "enable multithreader for plans loading",
+    "short_display": "short display mode for smaller or fixed size terminal windows (True/False)"
  } #map for splicer configurator
 
 persist_map = [
@@ -267,11 +268,12 @@ def live_timing_back(service_type_id, plan_id):
             stale = 0
             time.sleep(2)
         except Exception as e:
-            print(f"E {e}")
+            #print(f"E {e}")
             try: #check if in preservice
                 try:
                     if rl['data']['links']['current_item_time'] != None: #if current item time shows up
-                        print("CT/RL OK")
+                        pass
+                        #print("CT/RL OK")
                     else:
                         print(0/0)
                 except:
@@ -345,12 +347,17 @@ def live_timing_front():
                 flag = [color.RED if time_remaining < 0 else color.GREEN][0]
                 os.system("clear")
                 #print time data
-                print(f"{color.BOLD}{color.CYAN}{current_plan_name}{color.RESET}")
-                print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}")
-                print(f"{color.YELLOW}-------------PRESERVICE--------------{color.RESET}")
-                print(f"{color.MAGENTA}NEXT SERVICE TIME: {color.RESET}{color.RED if time_remaining < 0 else ''}{service_time}Z")
-                print(f"{color.MAGENTA}NEXT SERVICE NAME: {color.RESET}{service_time_name}")
-                print(f"{color.GREEN}NEXT SERVICE IN: {color.RESET}{time_remaining_min}:{time_remaining_sec}")
+                if short_display:
+                    print(f"{color.YELLOW}--P/S--{color.RESET}")
+                    print(f"{service_time_name}")
+                    print(f"{time_remaining_min}:{time_remaining_sec}")
+                else:  
+                    print(f"{color.BOLD}{color.CYAN}{current_plan_name}{color.RESET}")
+                    print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}")
+                    print(f"{color.YELLOW}-------------PRESERVICE--------------{color.RESET}")
+                    print(f"{color.MAGENTA}NEXT SERVICE TIME: {color.RESET}{color.RED if time_remaining < 0 else ''}{service_time}Z")
+                    print(f"{color.MAGENTA}NEXT SERVICE NAME: {color.RESET}{service_time_name}")
+                    print(f"{color.GREEN}NEXT SERVICE IN: {color.RESET}{time_remaining_min}:{time_remaining_sec}")
                 time.sleep(0.8)
             elif preservice_mode == 0: #service mode
                 current_item_time_data = current_item
@@ -369,18 +376,21 @@ def live_timing_front():
                 time_remaining_sec = [int(round(time_remaining_sec, 0)) if time_remaining_sec > 9 else "0"+str(int(round(time_remaining_sec, 0)))][0]
                 flag = [color.RED if time_remaining < 0 else color.GREEN][0] #green text if on time, red if behind
                 os.system("clear")
-                #print time data
-                #print(f"{color.BOLD}{color.UNDERLINE}{current_plan_name}{color.RESET}")
-                print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}\n")
-                print(f"{color.BOLD}{flag}TIME ELAPSED:", time_elapsed)
-                print(f"TIME REMAINING: {'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}")
-                print(f"TIME ITEM:", other_item_time_data['length'])
-                print(f"TIME OFFSET:", time_offset, color.RESET)
-                # with open("time.json", "w") as timefile:
-                #     timefile.write(f"{str(time_remaining)} \n {other_item_time_data['title']}")
-                for i in other_item_time_data:
-                    print([color.UNDERLINE+i+color.RESET+color.BLUE+" "+other_item_time_data[i]+"\n"+color.RESET if "ti" in i and other_item_time_data[i] != None else ''][0], end='')
-                print([color.RED+str(stale)+color.RESET if stale > 15 else stale][0])
+                if short_display:
+                    #print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}\n")
+                    #print(f"{color.BOLD}{flag}TIME ELAPSED:", time_elapsed)
+                    print(f"{color.BOLD}{color.RED if time_remaining < 0 else color.GREEN}{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}")
+                    print(f"{color.RED if time_remaining < 0 else color.GREEN}{other_item_time_data['title']}{color.RESET}")
+                else:
+                    print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}\n")
+                    print(f"{color.BOLD}{flag}TIME ELAPSED:", time_elapsed)
+                    print(f"TIME REMAINING: {'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}")
+                    print(f"{color.RED if time_remaining < 0 else color.GREEN}ITEM: {other_item_time_data['title']}{color.RESET}")
+                    print(f"TIME ITEM:", other_item_time_data['length'])
+                    print(f"TIME OFFSET:", time_offset, color.RESET)
+                    for i in other_item_time_data:
+                        print([color.UNDERLINE+i+color.RESET+color.BLUE+" "+other_item_time_data[i]+"\n"+color.RESET if "ti" in i and other_item_time_data[i] != None else ''][0], end='')
+                    print([color.RED+str(stale)+color.RESET if stale > 15 else stale][0])
             time_string = f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}{' - '+service_time_name if preservice_mode != 0 and service_time_name != None else ''}"
             set_propresenter_stage_message_text(time_string if stale < 70 else "NO PCO")
             time.sleep(0.2)
