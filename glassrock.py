@@ -4,10 +4,12 @@ import os
 import time
 import random
 from datetime import datetime, date, timedelta
-#from multiprocessing import Process, Queue
 import _thread
 import sys
 import socket
+import http.server
+import socketserver
+
 try:
     import requests
 except:
@@ -36,8 +38,18 @@ filter_forward_days = 4
 #how many days to look forward for for plans
 threading_load_plans = True
 #load service_types/plans in threaded mode
-short_display = True
-#short display mode (not implemented yet)
+short_display = False
+#short display mode (for really small / fixed size terminals)
+
+autostart = False
+#enable autostart
+autostart_filter = "PSL | Weekend"
+#autostart filter (needs to include campus name)
+
+timejson_enable = False
+#write time string to time.json for serving via python3 -m http.server
+TIMEJSON_PORT = 8000
+#port to serve TIMEJSON from
 
 
 #source: idk google said this works and apparently it actually does
@@ -62,7 +74,9 @@ configure_map = {
     "filter_for_today_only": "True/False (capitalized first letter)",
     "filter_forward_days": "number of days to look at in advance for plans",
     "threading_load_plans": "enable multithreader for plans loading",
-    "short_display": "short display mode for smaller or fixed size terminal windows (True/False)"
+    "short_display": "short display mode for smaller or fixed size terminal windows (True/False)",
+    "autostart": "Autostart mode (True/False), requires filter (next option) to be set",
+    "autostart_filter": f"Autostart filter (eg. PSL | Weekend) {color.YELLOW}NOTE: overrides campus_name filter{color.RESET}"
  } #map for splicer configurator
 
 persist_map = [
@@ -148,7 +162,7 @@ def load_service_types():
     print(f"{color.BLUE}LOADING SERVICE TYPES{color.RESET}")
     global service_type_list
     service_type_list = []
-    service_type_page = requests.get(f"https://api.planningcenteronline.com/services/v2/service_types?where[name]={campus_name}&per_page=100", auth=(username, password))
+    service_type_page = requests.get(f"https://api.planningcenteronline.com/services/v2/service_types?where[name]={autostart_filter if autostart else campus_name}&per_page=100", auth=(username, password))
     service_type_list = service_type_list + [[service_type['id'], -18000, service_type['attributes']['name']] for service_type in service_type_page.json()['data'] if campus_name in service_type['attributes']['name']]
 
 plan_loading_count = 0
@@ -170,7 +184,7 @@ def load_plans_for_service_type(service_type):
             now = now.strftime("%B %-d, %Y")
             now_year = datetime.now() #drop?
             now_year = now_year.strftime("%Y") #drop?
-            if filter_for_today_only:
+            if filter_for_today_only or autostart: #only filter for today for autostart plans
                 service_list = service_list + [[service_type[0],p['id'],service_type_name+" - "+p['attributes']['dates']+" - "+str(p['attributes']['title'])] for p in service_page.json()['data'] if now in p['attributes']['dates']]
             elif filter_forward_days > 0:
                 #service_list = service_list + [[service_type[0],p['id'],service_type_name+" - "+p['attributes']['dates']+" - "+str(p['attributes']['title'])] for p in service_page.json()['data'] if any(i in p['attributes']['dates'] for i in filter_forward_list)]
@@ -335,7 +349,6 @@ def live_timing_front():
                         time_remaining = int(round(time_difference, 0))
                         time_remaining_min, time_remaining_sec = divmod(time_remaining, 60)
                         time_remaining_sec = [int(round(time_remaining_sec, 0)) if time_remaining_sec > 9 else "0"+str(int(round(time_remaining_sec, 0)))][0]
-                        #print(f"NEXT SERVICE TIME: {i[1]}")
                         plan_ok = 1
                         break
                 if plan_ok == 0:
@@ -344,13 +357,16 @@ def live_timing_front():
                     set_propresenter_stage_message_text("NO SERVICE")
                     time.sleep(1)
                     continue
-                flag = [color.RED if time_remaining < 0 else color.GREEN][0]
                 os.system("clear")
                 #print time data
                 if short_display:
-                    print(f"{color.YELLOW}--P/S--{color.RESET}")
-                    print(f"{service_time_name}")
-                    print(f"{time_remaining_min}:{time_remaining_sec}")
+                    # displaystring = f"""
+                    #     {color.YELLOW}--P/S--{color.RESET}
+                    #     {service_time_name[:7] if service_time_name != None else ""}
+                    #     {time_remaining_min}:{time_remaining_sec}
+                    # """
+                    # print(displaystring)
+                    print(f"{time_remaining_min}:{time_remaining_sec}", end="")
                 else:  
                     print(f"{color.BOLD}{color.CYAN}{current_plan_name}{color.RESET}")
                     print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}")
@@ -377,15 +393,12 @@ def live_timing_front():
                 flag = [color.RED if time_remaining < 0 else color.GREEN][0] #green text if on time, red if behind
                 os.system("clear")
                 if short_display:
-                    #print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}\n")
-                    #print(f"{color.BOLD}{flag}TIME ELAPSED:", time_elapsed)
                     print(f"{color.BOLD}{color.RED if time_remaining < 0 else color.GREEN}{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}")
-                    print(f"{color.RED if time_remaining < 0 else color.GREEN}{other_item_time_data['title']}{color.RESET}")
+                    print(f"{color.RED if time_remaining < 0 else color.GREEN}{other_item_time_data['title'][:7]}{color.RESET}")
                 else:
                     print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}\n")
                     print(f"{color.BOLD}{flag}TIME ELAPSED:", time_elapsed)
                     print(f"TIME REMAINING: {'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}")
-                    print(f"{color.RED if time_remaining < 0 else color.GREEN}ITEM: {other_item_time_data['title']}{color.RESET}")
                     print(f"TIME ITEM:", other_item_time_data['length'])
                     print(f"TIME OFFSET:", time_offset, color.RESET)
                     for i in other_item_time_data:
@@ -400,50 +413,72 @@ def live_timing_front():
             time.sleep(1)
             continue
 
+def time_json_server():
+    print("STARTING TIMEJSON SERVER")
+    class SingleFileHandler(http.server.SimpleHTTPRequestHandler):
+        def do_GET(self):
+            # Always serve the same file regardless of the path requested
+            self.send_response(200)
+            self.send_header("Content-type", "application/octet-stream")
+            self.end_headers()
+            self.wfile.write("{ \"time\""+f": \"{time_string}\" "+"}")
+
+    with socketserver.TCPServer(("", TIMEJSON_PORT), SingleFileHandler) as httpd:
+        print(f"TIMEJSON SERVER STARTED ON PORT {TIMEJSON_PORT}")
+        httpd.serve_forever()
+
+def live(c): #c is command list, arg 1 (c[1])
+    service_type_id = service_list[c][0]
+    plan_id = service_list[c][1]
+    global current_plan_name
+    current_plan_name = service_list[c][2]
+    print(service_type_id)
+    print(plan_id)
+    plan_ok = 0
+    while plan_ok == 0:
+        rl = requests.get(f"https://api.planningcenteronline.com/services/v2/service_types/{service_type_id}/plans/{plan_id}/live", auth=(username, password))
+        #print(rl.json())
+        rl = rl.json() #all after this will only be using json obect, not request code etc
+        try:
+            for i in rl['data']['links']:
+                print(i, color.BLUE, rl['data']['links'][i], color.RESET)
+            plan_ok = 1
+        except Exception as e:
+            print("plan looks funny, reloading (plan is broken PCO sent garbage)")
+            time.sleep(3)
+    print(color.GREEN+"PROPRESENTER ACTIVE"+color.RESET if propresenter_active else "PROPRESENTER DISABLED")
+    #attempted multithreading
+    t1 = _thread.start_new_thread(live_timing_back, (service_type_id, plan_id,))
+    t2 = _thread.start_new_thread(live_timing_front, ())
+
 
 if __name__ == '__main__':
     load_service_types()
     reload_plans()
     time.sleep(1)
     os.system("clear")
-    print(f"{color.GREEN} TYPE H FOR HELP {color.RESET}")
-    show_plans()
+    if autostart:
+        print(f"{color.RED}AUTOSTARTING{color.RESET}")
+        live(0)
+    else:
+        print(f"{color.GREEN} TYPE H FOR HELP {color.RESET}")
+        show_plans()
+    if timejson_enable:
+        _thread.start_new_thread(time_json_server, ())
     while True:
         try:
             c = input("> ")
             c = c.split(" ")
+            started = True
             c[0] = c[0].upper() #make first letter command uppercase
             if len(c) > 1: #stop if it isn't a multiple letter command or if they just hit enter
-                #r = requests.get(plans[int(c[1])-1]['links']['self'], auth=(username, password)) #get just selected plan data
-                #print(r.url)
                 if c[0] == "S": #list a specific plans contents
                     i = service_list[int(c[1])-1]
                     print(f"{color.CYAN}{c[1]}: {color.RESET}{i[0]} - {i[1]} - {color.GREEN}{i[2]}{color.RESET}")
                     continue
                 if c[0] == "L": #live
-                    service_type_id = service_list[int(c[1])-1][0]
-                    plan_id = service_list[int(c[1])-1][1]
-                    current_plan_name = service_list[int(c[1])-1][2]
-                    print(service_type_id)
-                    print(plan_id)
-                    plan_ok = 0
-                    while plan_ok == 0:
-                        rl = requests.get(f"https://api.planningcenteronline.com/services/v2/service_types/{service_type_id}/plans/{plan_id}/live", auth=(username, password))
-                        #print(rl.json())
-                        rl = rl.json() #all after this will only be using json obect, not request code etc
-                        try:
-                            for i in rl['data']['links']:
-                                print(i, color.BLUE, rl['data']['links'][i], color.RESET)
-                            plan_ok = 1
-                        except Exception as e:
-                            print("plan looks funny, reloading (plan is broken PCO sent garbage)")
-                            time.sleep(3)
-                    print(color.GREEN+"PROPRESENTER ACTIVE"+color.RESET if propresenter_active else "PROPRESENTER DISABLED")
-                    #plan_time_static_offset = int([i[1] for i in service_type_list if i[0] == service_type_id][0])
-                    #attempted multithreading
-                    t1 = _thread.start_new_thread(live_timing_back, (service_type_id, plan_id,))
-                    t2 = _thread.start_new_thread(live_timing_front, ())
-                continue #so can have second handlers for each letter than only run when no args
+                    live(int(c[1])-1)
+                    continue #so can have second handlers for each letter than only run when no args
             elif c[0] == "K":
                 set_propresenter_stage_message_text("RLS")
                 print("EXITING")
