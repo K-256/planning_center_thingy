@@ -15,13 +15,13 @@ import _thread
 import sys
 import socket
 
-#-------------------------COPY PASTE THIS SECTION--------------------------
+#-------------------------KEYS SECTION-------------------------------------------------------
 username = "REPLACE_WITH_YOUR_TOKENS_ETC_FROM_PCO_DEV_PAGE"
 password = "REPLACE_WITH_YOUR_TOKENS_ETC_FROM_PCO_DEV_PAGE"
-#-------------------------COPY PASTE THIS SECTION---------------------------
+#-------------------------KEYS SECTION-------------------------------------------------------
 
 
-#-------------------------DEFAULT CONFIG SECTION---------------------------
+#-------------------------CONFIG SECTION---------------------------
 campus_name = "PSL |"
 service_type_list = []
 preroll_offset = -127
@@ -57,7 +57,7 @@ class color:
     UNDERLINE = '\033[4m'
 
 configure_map = {
-    "propresenter_active": "True/False (capitalized first letter)",
+    "propresenter_active": "True/False (HTTP ProPresenter StageMessage API)",
     "propresenter_machine_ip": "ProPresenter machine IP or 127.0.0.1 if this computer",
     "propresenter_machine_port": "ProPresenter machine port (found in settings)",
     "campus_name": f"Campus name (eg. PSL) in format {color.GREEN}{color.BOLD}\"PSL |\"{color.RESET}",
@@ -74,7 +74,7 @@ persist_map = [
     "person_id"
 ] #map for additional settings used in crossover
 
-#-------------------------DEFAULT CONFIG SECTION---------------------------
+#-------------------------CONFIG SECTION---------------------------
 
 
 service_list = [] #[[service type, plan number, dates+title]]
@@ -356,17 +356,10 @@ def live_timing_front():
                 else:  
                     print(f"{color.BOLD}{color.CYAN}{current_plan_name}{color.RESET}")
                     print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}")
-                    print(f"{color.YELLOW}------P/S-----{color.RESET}")
-                    #print(f"{color.MAGENTA}NEXT SERVICE TIME: {color.RESET}{color.RED if time_remaining < 0 else ''}{service_time}Z")                                                                                                                              
+                    print(f"{color.YELLOW}{color.BOLD}----------P/S---------{color.RESET}")
+                    print(f"{color.MAGENTA}NEXT SERVICE TIME: {color.RESET}{color.RED if time_remaining < 0 else ''}{service_time}Z")                                                                                                                              
                     print(f"{color.MAGENTA}NEXT SERVICE TIME: {color.RESET}{service_time_name}")
                     print(f"{color.GREEN}TIME TO SERVICE: {color.RESET}{time_remaining_min}:{time_remaining_sec}")
-
-                # print(f"{color.BOLD}{color.CYAN}{current_plan_name}{color.RESET}")
-                # print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}")
-                # print(f"{color.YELLOW}-------------PRESERVICE--------------{color.RESET}")
-                # print(f"{color.MAGENTA}NEXT SERVICE TIME: {color.RESET}{color.RED if time_remaining < 0 else ''}{service_time}Z")
-                # print(f"{color.MAGENTA}NEXT SERVICE NAME: {color.RESET}{service_time_name}")
-                # print(f"{color.GREEN}NEXT SERVICE IN: {color.RESET}{time_remaining_min}:{time_remaining_sec}")
                 time.sleep(0.8)
             elif preservice_mode == 0: #service mode
                 current_item_time_data = current_item
@@ -395,19 +388,9 @@ def live_timing_front():
                     print(f"TIME ITEM:", other_item_time_data['length'])
                     print(f"TIME OFFSET:", time_offset, color.RESET)
                     for i in other_item_time_data:
-                        print([color.UNDERLINE+i+color.RESET+color.BLUE+" "+other_item_time_data[i]+"\n"+color.RESET if "ti" in i and other_item_time_data[i] != None else ''][0], end='')                                                                          
+                        print([color.UNDERLINE+i+color.RESET+color.BLUE+" "+other_item_time_data[i]+"\n"+color.RESET if "ti" in i and other_item_time_data[i] != None else ''][0], end='', flush=True)                                                                          
                     print([color.RED+str(stale)+color.RESET if stale > 15 else stale][0])
-
-                #print(f"{color.BOLD}{color.UNDERLINE}{current_plan_name}{color.RESET}")
-                # print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}\n")
-                # print(f"{color.BOLD}{flag}TIME ELAPSED:", time_elapsed)
-                # print(f"TIME REMAINING: {'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}")
-                # print(f"TIME ITEM:", other_item_time_data['length'])
-                # print(f"TIME OFFSET:", time_offset, color.RESET)
-                for i in other_item_time_data:
-                    print([color.UNDERLINE+i+color.RESET+color.BLUE+" "+other_item_time_data[i]+"\n"+color.RESET if "ti" in i and other_item_time_data[i] != None else ''][0], end='')
-                print([color.RED+str(stale)+color.RESET if stale > 15 else stale][0])
-            time_string = f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}{' - '+service_time_name if preservice_mode != 0 and service_time_name != None else ''}"
+                time_string = f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}{' - '+service_time_name if preservice_mode != 0 and service_time_name != None else ''}"
             set_propresenter_stage_message_text(time_string if stale < 70 else "NO PCO")
             # with open("time.json", "w") as timefile:
             #     s = "{ \"time\""+f": \"{time_string}\" "+"}"
