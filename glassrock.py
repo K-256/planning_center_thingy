@@ -390,7 +390,7 @@ def live_timing_front():
                     for i in other_item_time_data:
                         print([color.UNDERLINE+i+color.RESET+color.BLUE+" "+other_item_time_data[i]+"\n"+color.RESET if "ti" in i and other_item_time_data[i] != None else ''][0], end='', flush=True)                                                                          
                     print([color.RED+str(stale)+color.RESET if stale > 15 else stale][0])
-                time_string = f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}{' - '+service_time_name if preservice_mode != 0 and service_time_name != None else ''}"
+            time_string = f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}{' - '+service_time_name if preservice_mode != 0 and service_time_name != None else ''}"
             set_propresenter_stage_message_text(time_string if stale < 70 else "NO PCO")
             # with open("time.json", "w") as timefile:
             #     s = "{ \"time\""+f": \"{time_string}\" "+"}"
@@ -424,7 +424,6 @@ if __name__ == '__main__':
                     service_type_id = service_list[int(c[1])-1][0]
                     plan_id = service_list[int(c[1])-1][1]
                     current_plan_name = service_list[int(c[1])-1][2]
-                    telemeter(f"STARTING PLAN: {current_plan_name}")
                     print(service_type_id)
                     print(plan_id)
                     plan_ok = 0
