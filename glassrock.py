@@ -20,7 +20,6 @@ username = "REPLACE_WITH_YOUR_TOKENS_ETC_FROM_PCO_DEV_PAGE"
 password = "REPLACE_WITH_YOUR_TOKENS_ETC_FROM_PCO_DEV_PAGE"
 #-------------------------KEYS SECTION-------------------------------------------------------
 
-
 #-------------------------CONFIG SECTION---------------------------
 campus_name = "PSL |"
 service_type_list = []
@@ -34,14 +33,37 @@ propresenter_machine_port = "1025"
 #port for ProPresenter machine
 filter_for_today_only = False
 #filter for plans only happening today
-filter_forward_days = 4
+filter_forward_days = 6
 #how many days to look forward for for plans
+filter_backward_days = 1
+#how many days ago to load plans from
 threading_load_plans = True
 #load service_types/plans in threaded mode
 
-short_display = False
-#short display mode (for really small / fixed size terminals)
+data_display = False
+#display all data instead of just time and item name
 
+
+configure_map = {
+    "propresenter_active": "True/False (HTTP ProPresenter StageMessage API)",
+    "propresenter_machine_ip": "ProPresenter machine IP or 127.0.0.1 if this computer",
+    "propresenter_machine_port": "ProPresenter machine port (found in settings)",
+    "campus_name": f"Campus name (eg. PSL) in format \"PSL |\"",
+    "preroll_offset": "negative int of preroll length in seconds (eg. -127)",
+    "filter_for_today_only": "True/False (capitalized first letter)",
+    "filter_forward_days": "number of days to look at in advance for plans",
+    "filter_backward_days": "if you need to load a multiday plan from yesterday etc.",
+    "threading_load_plans": "enable multithreader for plans loading",
+    "short_display": "short display mode for small terminals (True/False)"
+ } #map for splicer configurator
+
+persist_map = [
+    "username",
+    "password",
+    "person_id"
+] #map for additional settings used in crossover
+
+#-------------------------CONFIG SECTION---------------------------
 
 #source: idk google said this works and apparently it actually does
 class color:
@@ -55,26 +77,13 @@ class color:
     WHITE = '\033[37m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
-
-configure_map = {
-    "propresenter_active": "True/False (HTTP ProPresenter StageMessage API)",
-    "propresenter_machine_ip": "ProPresenter machine IP or 127.0.0.1 if this computer",
-    "propresenter_machine_port": "ProPresenter machine port (found in settings)",
-    "campus_name": f"Campus name (eg. PSL) in format {color.GREEN}{color.BOLD}\"PSL |\"{color.RESET}",
-    "preroll_offset": "negative int of preroll length in seconds (eg. -127)",
-    "filter_for_today_only": "True/False (capitalized first letter)",
-    "filter_forward_days": "number of days to look at in advance for plans",
-    "threading_load_plans": "enable multithreader for plans loading",
-    "short_display": "short display mode for small terminals (True/False)"
- } #map for splicer configurator
-
-persist_map = [
-    "username",
-    "password",
-    "person_id"
-] #map for additional settings used in crossover
-
-#-------------------------CONFIG SECTION---------------------------
+    BK_RED = '\033[41m'
+    BK_GREEN = '\033[42m'
+    BK_YELLOW = '\033[43m'
+    BK_BLUE = '\033[44m'
+    BK_MAGENTA = '\033[45m'
+    BK_CYAN = '\033[46m'
+    BK_WHITE = '\033[47m'
 
 
 service_list = [] #[[service type, plan number, dates+title]]
@@ -198,7 +207,7 @@ def reload_plans():
     service_list = []
     global filter_forward_list
     #filter_forward_list = [(datetime.now() + timedelta(days=i)).strftime("%B %-d, %Y") for i in range(0, abs(filter_forward_days)) if filter_forward_days != 0]
-    filter_forward_list = [(datetime.now() + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(-1, abs(filter_forward_days)) if filter_forward_days != 0]
+    filter_forward_list = [(datetime.now() + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(-(filter_backward_days), abs(filter_forward_days)) if filter_forward_days != 0]
     print(f"FFL: {filter_forward_list}")
     for service_type in service_type_list:
         if threading_load_plans:
@@ -229,6 +238,106 @@ def set_propresenter_stage_message_text(message):
     headers = {'Content-Type': 'application/json'}
     propresenter_timer_msg = requests.put(f"http://{propresenter_machine_ip}:{propresenter_machine_port}/v1/stage/message", data=message, headers=headers)
 
+block = "█"
+space = " "
+b = block
+s = space
+
+letters = {
+    "1": [
+        [b, b],
+        [b, b],
+        [b, b],
+        [b, b],
+        [b, b]
+    ],
+    "2": [
+       [b, b, b, b, b, b],
+       [s, s, s, s, b, b],
+       [b, b, b, b, b, b],
+       [b, b, s, s, s, s],
+       [b, b, b, b, b, b]
+    ],
+    "3": [
+       [b, b, b, b, b, b],
+       [s, s, s, s, b, b],
+       [b, b, b, b, b, b],
+       [s, s, s, s, b, b],
+       [b, b, b, b, b, b]
+    ],
+    "4": [
+       [b, b, s, s, b, b],
+       [b, b, s, s, b, b],
+       [b, b, b, b, b, b],
+       [s, s, s, s, b, b],
+       [s, s, s, s, b, b]
+    ],
+    "5": [
+       [b, b, b, b, b, b],
+       [b, b, s, s, s, s],
+       [b, b, b, b, b, b],
+       [s, s, s, s, b, b],
+       [b, b, b, b, b, b]
+    ],
+    "6": [
+       [b, b, b, b, b, b],
+       [b, b, s, s, s, s],
+       [b, b, b, b, b, b],
+       [b, b, s, s, b, b],
+       [b, b, b, b, b, b]
+    ],
+    "7": [
+       [b, b, b, b, b, b],
+       [s, s, s, s, b, b],
+       [s, s, s, s, b, b],
+       [s, s, s, s, b, b],
+       [s, s, s, s, b, b]
+    ],
+    "8": [
+       [b, b, b, b, b, b],
+       [b, b, s, s, b, b],
+       [b, b, b, b, b, b],
+       [b, b, s, s, b, b],
+       [b, b, b, b, b, b]
+    ],
+    "9": [
+       [b, b, b, b, b, b],
+       [b, b, s, s, b, b],
+       [b, b, b, b, b, b],
+       [s, s, s, s, b, b],
+       [b, b, b, b, b, b]
+    ],
+    "0": [
+       [b, b, b, b, b, b],
+       [b, b, s, s, b, b],
+       [b, b, b, b, b, b],
+       [s, s, s, s, b, b],
+       [b, b, b, b, b, b]
+    ],
+    ":": [
+        [s, s],
+        [b, b],
+        [s, s],
+        [b, b],
+        [s, s]
+    ],
+    "-": [
+        [s, s, s],
+        [s, s, s],
+        [b, b, b],
+        [s, s, s],
+        [s, s, s]
+    ],
+}
+
+def blocktext(text, colorblock):
+    split_text = list(text)
+    output_list = ["", "", "", "", ""]
+    for letter in split_text:
+        for i in range(0, len(output_list)):
+            output_list[i] = output_list[i]+''.join(colorblock+char if char == b else color.RESET+char for char in letters[letter][i])+color.RESET+s
+    return "\n".join(output_list)
+
 #init all variables that will become globals
 service_type_id = 0
 plan_id = 0
@@ -242,6 +351,7 @@ plan_times_update_time = 0
 time_remaining = 0
 preservice_mode = 1
 stale = 0
+last_error = ""
 
 #timing backend, contains all blocking API requests
 def live_timing_back(service_type_id, plan_id):
@@ -253,6 +363,7 @@ def live_timing_back(service_type_id, plan_id):
     global plan_times_update_time
     global stale
     global preservice_mode
+    global last_error
     crashes = 0
     stale = 0
     print("BACKEND START")
@@ -307,7 +418,8 @@ def live_timing_back(service_type_id, plan_id):
             except Exception as e: #if PCO is legit down or if there is no internet
                 crashes += 1
                 stale += 1
-                print(f"CRASH: {e}")
+                #print(f"CRASH: {e}")
+                last_error = f"BACKEND ERROR {e}"
                 time.sleep([crashes/2 if crashes < 16 else 8][0])
 
 any_update_time = 0
@@ -316,6 +428,7 @@ def live_timing_front():
     global any_update_time #needed?
     global time_remaining
     global stale
+    global last_error
     print("FRONTEND START")
     set_propresenter_stage_message_text("T-START")
     time.sleep(2)
@@ -348,18 +461,16 @@ def live_timing_front():
                     set_propresenter_stage_message_text("NO SERVICE")
                     time.sleep(1)
                     continue
-                flag = [color.RED if time_remaining < 0 else color.GREEN][0]
                 os.system("clear")
                 #print time data
-                if short_display:
-                    print(f"{time_remaining_min}:{time_remaining_sec}", end="", flush=True)
-                else:  
-                    print(f"{color.BOLD}{color.CYAN}{current_plan_name}{color.RESET}")
+                print(blocktext(f"{time_remaining_min}:{time_remaining_sec}", color.YELLOW+color.BK_YELLOW)+color.RESET)#, end="", flush=True)
+                if data_display:
+                    c = "\n".join(current_plan_name.split("-"))
+                    print(f"{color.BOLD}{color.CYAN}{c}{color.RESET}")
                     print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}")
                     print(f"{color.YELLOW}{color.BOLD}----------P/S---------{color.RESET}")
-                    print(f"{color.MAGENTA}NEXT SERVICE TIME: {color.RESET}{color.RED if time_remaining < 0 else ''}{service_time}Z")                                                                                                                              
-                    print(f"{color.MAGENTA}NEXT SERVICE TIME: {color.RESET}{service_time_name}")
-                    print(f"{color.GREEN}TIME TO SERVICE: {color.RESET}{time_remaining_min}:{time_remaining_sec}")
+                    print(f"{color.MAGENTA}NEXT TIME: {color.RESET}{color.RED if time_remaining < 0 else ''}{service_time}Z")                                                                                                                              
+                    print(f"{color.MAGENTA}TIME NAME: {color.RESET}{service_time_name}")
                 time.sleep(0.8)
             elif preservice_mode == 0: #service mode
                 current_item_time_data = current_item
@@ -379,17 +490,16 @@ def live_timing_front():
                 flag = [color.RED if time_remaining < 0 else color.GREEN][0] #green text if on time, red if behind
                 os.system("clear")
                 #print time data
-                if short_display:
-                    print(f"{color.BOLD}{color.RED if time_remaining < 0 else color.GREEN}{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}", end="", flush=True)                                                                        
-                else:
-                    print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}\n")
+                print(blocktext(f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}", flag+color.BK_GREEN if flag == color.GREEN else flag+color.BK_RED))
+                print(f"{other_item_time_data['title'].center(28)}{color.RESET}")
+                if data_display:
+                    print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}")
                     print(f"{color.BOLD}{flag}TIME ELAPSED:", time_elapsed)
-                    print(f"TIME REMAINING: {'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}")
                     print(f"TIME ITEM:", other_item_time_data['length'])
                     print(f"TIME OFFSET:", time_offset, color.RESET)
                     for i in other_item_time_data:
                         print([color.UNDERLINE+i+color.RESET+color.BLUE+" "+other_item_time_data[i]+"\n"+color.RESET if "ti" in i and other_item_time_data[i] != None else ''][0], end='', flush=True)                                                                          
-                    print([color.RED+str(stale)+color.RESET if stale > 15 else stale][0])
+                    print(f"\n{[color.RED+str(stale)+color.RESET if stale > 15 else stale][0]} - {last_error}")
             time_string = f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}{' - '+service_time_name if preservice_mode != 0 and service_time_name != None else ''}"
             set_propresenter_stage_message_text(time_string if stale < 70 else "NO PCO")
             # with open("time.json", "w") as timefile:
@@ -397,7 +507,8 @@ def live_timing_front():
             #     timefile.write(f"{s}\n")
             time.sleep(0.2)
         except Exception as e:
-            print(f"TIMING FRONTEND ERROR: {e}")
+            #print(f"TIMING FRONTEND ERROR: {e}")
+            last_error = f"FRONTEND ERROR {e}"
             stale += 50
             time.sleep(1)
             continue
