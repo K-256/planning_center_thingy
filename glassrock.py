@@ -33,14 +33,14 @@ propresenter_machine_port = "1025"
 #port for ProPresenter machine
 filter_for_today_only = False
 #filter for plans only happening today
-filter_forward_days = 6
+filter_forward_days = 4
 #how many days to look forward for for plans
 filter_backward_days = 1
 #how many days ago to load plans from
 threading_load_plans = True
 #load service_types/plans in threaded mode
 
-data_display = False
+data_display = True
 #display all data instead of just time and item name
 
 
@@ -54,7 +54,7 @@ configure_map = {
     "filter_forward_days": "number of days to look at in advance for plans",
     "filter_backward_days": "if you need to load a multiday plan from yesterday etc.",
     "threading_load_plans": "enable multithreader for plans loading",
-    "short_display": "short display mode for small terminals (True/False)"
+    "data_display": "display extra data instead of just time block"
  } #map for splicer configurator
 
 persist_map = [
@@ -153,7 +153,7 @@ def configure(configure_map):
         else:
             print(color.BLUE, f"SETTING {parameter} to {setting}", color.RESET)
             splicer(parameter, setting)
-        time.sleep(0.6)
+        time.sleep(0.25)
     print(f"{color.GREEN}FINISHED CONFIGURATION, RESETTING{color.RESET}")
     time.sleep(1)
     restart()
@@ -310,8 +310,8 @@ letters = {
     "0": [
        [b, b, b, b, b, b],
        [b, b, s, s, b, b],
-       [b, b, b, b, b, b],
-       [s, s, s, s, b, b],
+       [b, b, s, s, b, b],
+       [b, b, s, s, b, b],
        [b, b, b, b, b, b]
     ],
     ":": [
@@ -385,6 +385,7 @@ def live_timing_back(service_type_id, plan_id):
             time.sleep(2)
         except Exception as e:
             print(f"E {e}")
+            # last_error = f"E {e}"
             try: #check if in preservice
                 try:
                     if rl['data']['links']['current_item_time'] != None: #if current item time shows up
