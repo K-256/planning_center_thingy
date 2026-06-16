@@ -1,19 +1,19 @@
 #!/usr/bin/python3
 #v-idk
+import os
 try:
     import requests
 except:
     os.system("pip3 install requests")
     import requests
 import json
-import os
 import time
 import random
 from datetime import datetime, date, timedelta
-#from multiprocessing import Process, Queue
 import _thread
 import sys
 import socket
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 #-------------------------KEYS SECTION-------------------------------------------------------
 username = "REPLACE_WITH_YOUR_TOKENS_ETC_FROM_PCO_DEV_PAGE"
@@ -39,9 +39,13 @@ filter_backward_days = 1
 #how many days ago to load plans from
 threading_load_plans = True
 #load service_types/plans in threaded mode
-
 data_display = True
 #display all data instead of just time and item name
+file_timejson_output = True
+#write time data to time.json file
+web_display = True
+#host web display
+web_display_port = 6767
 
 
 configure_map = {
@@ -54,7 +58,8 @@ configure_map = {
     "filter_forward_days": "number of days to look at in advance for plans",
     "filter_backward_days": "if you need to load a multiday plan from yesterday etc.",
     "threading_load_plans": "enable multithreader for plans loading",
-    "data_display": "display extra data instead of just time block"
+    "data_display": "display extra data instead of just time block",
+    "timejson_output": "write to time.json file for web display (True/False)"
  } #map for splicer configurator
 
 persist_map = [
@@ -64,6 +69,94 @@ persist_map = [
 ] #map for additional settings used in crossover
 
 #-------------------------CONFIG SECTION---------------------------
+
+webdisplay_html_string = """
+<head>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+
+<style>
+body {
+    background-color: #1F242A;
+    color: white;
+    font-family: Noto Sans;
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1px
+}
+
+.center-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+p {
+  margin: 0;
+}
+
+</style>
+</head>
+<body>
+
+<div class="center-container">
+  <p style="font-size: 60px" id="current-time-name">-</p>
+  <p style="font-size: 165px" id="time">-</p>
+  <p style="font-size: 60px" id="next-time-name">-</p>
+</div>
+
+<script>
+
+  const timecolor = document.getElementById("time");
+
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function reload_page_thingy() {
+    const current_URL = window.location.href.split('?')[0];
+    const reload_URL = current_URL + '?jumpCache=' + new Date().getTime()
+    window.location.reload(reload_URL);
+  }
+  
+  async function time_display() {
+    while (true) {
+      try {
+        req = await fetch("/time.json");
+        if (!req.ok) {
+          console.error("REQUEST FAILED");
+          await sleep(2000);
+          reload_page_thingy();
+        }
+        const data = await req.json();
+        document.getElementById("time").innerHTML = data.time;
+        document.getElementById("current-time-name").innerHTML = data.current_item_name;
+        document.getElementById("next-time-name").innerHTML = data.next_item_name;
+        console.log("DATA: ", data);
+        if (data.time.startsWith("-")) {
+          timecolor.style.color = "red";
+        } else {
+          timecolor.style.color = "white"
+        }
+      } catch (error) {
+        console.error('JSON fetch thingy failed: ', error);
+      }
+      await sleep(500);
+    }
+  }
+
+  time_display();
+
+</script>
+
+</body>
+"""
 
 #source: idk google said this works and apparently it actually does
 class color:
@@ -182,8 +275,8 @@ def load_plans_for_service_type(service_type):
             service_page = requests.get(f"http://api.planningcenteronline.com/services/v2/service_types/{service_type[0]}/plans?offset={total_service_count-25}", auth=(username, password))
             now = datetime.now()
             now = now.strftime("%B %-d, %Y")
-            now_year = datetime.now() #drop?
-            now_year = now_year.strftime("%Y") #drop?
+            #now_year = datetime.now() #drop?
+            #now_year = now_year.strftime("%Y") #drop?
             if filter_for_today_only:
                 service_list = service_list + [[service_type[0],p['id'],service_type_name+" - "+p['attributes']['dates']+" - "+str(p['attributes']['title'])] for p in service_page.json()['data'] if now in p['attributes']['dates']]
             elif filter_forward_days > 0:
@@ -344,6 +437,7 @@ plan_id = 0
 #rl = []
 current_item = []
 current_item_update_time = 0
+next_item_name = ""
 other_items = []
 other_items_update_time = 0
 plan_times = []
@@ -352,11 +446,13 @@ time_remaining = 0
 preservice_mode = 1
 stale = 0
 last_error = ""
+current_timejson = ""
 
 #timing backend, contains all blocking API requests
 def live_timing_back(service_type_id, plan_id):
     global current_item
     global current_item_update_time
+    global next_item_name
     global other_items
     global other_items_update_time
     global plan_times
@@ -364,6 +460,7 @@ def live_timing_back(service_type_id, plan_id):
     global stale
     global preservice_mode
     global last_error
+    current_item_id = 0
     crashes = 0
     stale = 0
     print("BACKEND START")
@@ -371,7 +468,13 @@ def live_timing_back(service_type_id, plan_id):
         try:
             current_item_time_data = requests.get(rl['data']['links']['current_item_time'], timeout=8, auth=(username, password))
             current_item_time_data = current_item_time_data.json()
-            current_item_id = current_item_time_data['data']['relationships']['item']['data']['id']
+            current_item_id_new = current_item_time_data['data']['relationships']['item']['data']['id']
+            if current_item_id_new != current_item_id:
+                current_item_id = current_item_id_new
+                next_item_id = requests.get(rl['data']['links']['next_item_time'], timeout=8, auth=(username, password))
+                next_item_id = next_item_id.json()['data']['relationships']['item']['data']['id']
+                next_item_name = requests.get(f"https://api.planningcenteronline.com/services/v2/service_types/{service_type_id}/plans/{plan_id}/live/items/{next_item_id}", auth=(username, password), timeout=8)
+                next_item_name = next_item_name.json()['data']['attributes']['title']
             #print(current_item_time_data['data']['attributes']['live_start_at'])
             other_item_time_data = requests.get(f"https://api.planningcenteronline.com/services/v2/service_types/{service_type_id}/plans/{plan_id}/live/items/{current_item_id}", auth=(username, password), timeout=8)
             other_item_time_data = other_item_time_data.json()['data']['attributes']
@@ -382,7 +485,7 @@ def live_timing_back(service_type_id, plan_id):
             crashes = 0
             preservice_mode = 0
             stale = 0
-            time.sleep(2)
+            time.sleep(1.5)
         except Exception as e:
             print(f"E {e}")
             # last_error = f"E {e}"
@@ -430,6 +533,8 @@ def live_timing_front():
     global time_remaining
     global stale
     global last_error
+    global current_timejson
+    current_item_name = ""
     print("FRONTEND START")
     set_propresenter_stage_message_text("T-START")
     time.sleep(2)
@@ -446,6 +551,8 @@ def live_timing_front():
                 for i in time_until_next_service:
                     service_time = i[0] #.split("T")[1][:-1] #for printing
                     service_time_name = i[1] #for printing
+                    current_item_name = service_time_name
+                    next_item_name = ""
                     dt_object = datetime.strptime(i[0], "%Y-%m-%dT%H:%M:%SZ")
                     dt_unix = dt_object.timestamp()
                     time_difference = (dt_unix-time.time()) + datetime.now().astimezone().utcoffset().total_seconds() + preroll_offset
@@ -493,6 +600,7 @@ def live_timing_front():
                 #print time data
                 print(blocktext(f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}", flag+color.BK_GREEN if flag == color.GREEN else flag+color.BK_RED))
                 print(f"{other_item_time_data['title'].center(28)}{color.RESET}")
+                current_item_name = other_item_time_data['title']
                 if data_display:
                     print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}")
                     print(f"{color.BOLD}{flag}TIME ELAPSED:", time_elapsed)
@@ -503,9 +611,10 @@ def live_timing_front():
                     print(f"\n{[color.RED+str(stale)+color.RESET if stale > 15 else stale][0]} - {last_error}")
             time_string = f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}{' - '+service_time_name if preservice_mode != 0 and service_time_name != None else ''}"
             set_propresenter_stage_message_text(time_string if stale < 70 else "NO PCO")
-            # with open("time.json", "w") as timefile:
-            #     s = "{ \"time\""+f": \"{time_string}\" "+"}"
-            #     timefile.write(f"{s}\n")
+            current_timejson = f"{{ \"time\": \"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}\", \"current_item_name\": \"{current_item_name}\", \"next_item_name\": \"{next_item_name}\"}} "
+            if file_timejson_output:
+                with open("time.json", "w") as timefile:
+                    timefile.write(f"{current_timejson}\n")
             time.sleep(0.2)
         except Exception as e:
             #print(f"TIMING FRONTEND ERROR: {e}")
@@ -514,6 +623,32 @@ def live_timing_front():
             time.sleep(1)
             continue
 
+class request_handler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        if len(args) > 1 and args[1].startswith(('4', '5')):
+            super().log_message(format, *args) # Only print client/server errors
+    def do_GET(self):
+        if self.path == '/time.json':
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(current_timejson.encode())
+        else:
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(webdisplay_html_string.encode('utf-8'))
+
+def server(port=6767):
+    print(f"{color.GREEN}WEBDISPLAY ENABLED{color.RESET}")
+    server_address = ('', port)
+    httpd = HTTPServer(server_address, request_handler)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("EXITING")
+        httpd.server_close()
+
 
 if __name__ == '__main__':
     load_service_types()
@@ -521,6 +656,8 @@ if __name__ == '__main__':
     reload_plans()
     time.sleep(0.5)
     os.system("clear")
+    if web_display:
+            _thread.start_new_thread(server, (web_display_port,))
     show_plans()
     while True:
         try:
