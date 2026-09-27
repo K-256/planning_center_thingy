@@ -3,6 +3,7 @@
 import os
 import sys
 sys.dont_write_bytecode = True
+import subprocess
 try:
     import requests
 except:
@@ -15,7 +16,7 @@ from datetime import datetime, date, timedelta
 import _thread
 import socket
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import importlib.util
+# import importlib.util
 
 def restart():
     sys.stdout.flush() 
@@ -23,22 +24,24 @@ def restart():
     os.execv(sys.executable, ['python3'] + sys.argv)
 
 try:
-    import pco_settings
+    cfg = json.loads(os.path.expanduser("~")+"/.pco_config.json")
 except:
-    # os.system("wget -O pco_settings.py https://raw.githubusercontent.com/K-256/planning_center_thingy/refs/heads/main/.pco_settings.py")
-    if not os.path.exists(os.path.expanduser("~")+"/.pco_settings.py"):
-        print("NO CONFIG FILE FOUND, DOWNLOADING TEMPLATES")
-        os.system("wget -O ~/.pco_settings.py https://raw.githubusercontent.com/K-256/planning_center_thingy/refs/heads/main/.pco_settings.py")
-        restart()
-    else: #load from hidden file if exists
-        config_spec = importlib.util.spec_from_file_location("pco_settings", os.path.expanduser("~")+"/.pco_config.py")
-        pco_settings = importlib.util.module_from_spec(config_spec)
+    print("NO CONFIG FILE FOUND, DOWNLOADING TEMPLATE")
+    os.system("wget -O pco_settings.py https://raw.githubusercontent.com/K-256/planning_center_thingy/refs/heads/main/pco_config.json")
+    time.sleep(2)
+    restart()
+    # if not os.path.exists(os.path.expanduser("~")+"/pco_settings.py"):
+    #     print("NO CONFIG FILE FOUND, DOWNLOADING TEMPLATES")
+    #     os.system("wget -O pco_settings.py https://raw.githubusercontent.com/K-256/planning_center_thingy/refs/heads/main/pco_settings.py")
+    #     restart()
 
-try:
-    cfg = pco_settings.cfg
-except:
-    print("CORRUPTED SETTINGS FILE")
-    sys.exit(99)
+print(cfg)
+
+# try:
+#     cfg = pco_settings.cfg
+# except:
+#     print("CORRUPTED SETTINGS FILE")
+#     sys.exit(99)
 
 username = "REPLACE_WITH_YOUR_TOKENS_ETC_FROM_PCO_DEV_PAGE"
 password = "REPLACE_WITH_YOUR_TOKENS_ETC_FROM_PCO_DEV_PAGE"
@@ -171,12 +174,12 @@ def update():
     time.sleep(1)
     restart()
 
-def configure(configure_map):
+def configure():
     os.system("clear")
     print(color.YELLOW+color.BOLD+"------CONFIGURE------", color.RESET)
     print(color.YELLOW+"   (CTRL+X to save/exit)", color.RESET)
     time.sleep(4)
-    os.system("~/.pco_config.py")
+    subprocess.run(["nano", "~/.pco_config.json"])
     print(f"{color.GREEN}FINISHED CONFIGURATION, RESETTING{color.RESET}")
     time.sleep(1)
     restart()
@@ -645,8 +648,8 @@ if __name__ == '__main__':
                 show_plans()
             elif c[0] == "S": #refresh plans and print them to the screen
                 show_plans()
-            elif c[0] == "SPLICER":
-                configure(configure_map)
+            elif c[0] == "X":
+                configure()
             elif c[0] == "L":
                 print("Live: Select plan (ex. L 1)")
             elif c[0] == "U":

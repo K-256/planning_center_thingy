@@ -1,0 +1,19 @@
+{
+    "username": "REPLACE_WITH_YOUR_TOKEN",
+    "password": "REPLACE_WITH_YOUR_TOKEN",
+    "campus_name": "PSL |",
+    "preroll_offset": -123,
+    "preroll_offset_days": [6],
+    "propresenter_active": False,
+    "propresenter_machine_ip": "127.0.0.1",
+    "propresenter_machine_port": "1025",
+    "filter_for_today_only": False,
+    "filter_forward_days": 6,
+    "filter_backward_days": 1,
+    "threading_load_plans": True,
+    "blockprint": True,
+    "data_display": True,
+    "file_timejson_output": False,
+    "web_display": True,
+    "web_display_port": 6768
+}
