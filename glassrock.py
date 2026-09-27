@@ -16,34 +16,35 @@ from datetime import datetime, date, timedelta
 import _thread
 import socket
 from http.server import HTTPServer, BaseHTTPRequestHandler
-# import importlib.util
 
 def restart():
     sys.stdout.flush() 
     sys.stderr.flush()
     os.execv(sys.executable, ['python3'] + sys.argv)
 
+# Load settings from pco_config.json, first in hidden file in home folder,
+# then in local folder, then load from GitHub if not found
 try:
-    cfg = json.loads(os.path.expanduser("~")+"/.pco_config.json")
-except:
-    print("NO CONFIG FILE FOUND, DOWNLOADING TEMPLATE")
-    os.system("wget -O pco_settings.py https://raw.githubusercontent.com/K-256/planning_center_thingy/refs/heads/main/pco_config.json")
-    time.sleep(2)
-    restart()
-    # if not os.path.exists(os.path.expanduser("~")+"/pco_settings.py"):
-    #     print("NO CONFIG FILE FOUND, DOWNLOADING TEMPLATES")
-    #     os.system("wget -O pco_settings.py https://raw.githubusercontent.com/K-256/planning_center_thingy/refs/heads/main/pco_settings.py")
-    #     restart()
+    with open(os.path.expanduser("~")+"/.pco_config.json", "r") as file:
+        cfg = json.load(file)
+except Exception as e:
+    try:
+        with open("pco_config.json", "r") as file:
+            cfg = json.load(file)
+    except:
+        print(f"NO CONFIG FILE FOUND, DOWNLOADING TEMPLATE {e}")
+        os.system(f"wget -O {os.path.expanduser('~')+'/.pco_config.json'} https://raw.githubusercontent.com/K-256/planning_center_thingy/refs/heads/main/pco_config.json")
+        time.sleep(2)
+        restart()
 
 print(cfg)
 
-# try:
-#     cfg = pco_settings.cfg
-# except:
-#     print("CORRUPTED SETTINGS FILE")
-#     sys.exit(99)
-
+# Check if PCO API tokens not set from defaults
 username = "REPLACE_WITH_YOUR_TOKENS_ETC_FROM_PCO_DEV_PAGE"
+    print("PCO API TOKEN NOT SET, SET IN ~/.pco_config.json")
+    sys.exit(99)
+
+username = cfg['username']
 password = "REPLACE_WITH_YOUR_TOKENS_ETC_FROM_PCO_DEV_PAGE"
 
 service_type_list = []
