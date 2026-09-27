@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 #v-idk
 import os
+import sys
+sys.dont_write_bytecode = True
 try:
     import requests
 except:
@@ -11,68 +13,38 @@ import time
 import random
 from datetime import datetime, date, timedelta
 import _thread
-import sys
 import socket
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import importlib.util
 
-#-------------------------KEYS SECTION-------------------------------------------------------
+def restart():
+    sys.stdout.flush() 
+    sys.stderr.flush()
+    os.execv(sys.executable, ['python3'] + sys.argv)
+
+try:
+    import pco_settings
+except:
+    # os.system("wget -O pco_settings.py https://raw.githubusercontent.com/K-256/planning_center_thingy/refs/heads/main/.pco_settings.py")
+    if not os.path.exists(os.path.expanduser("~")+"/.pco_settings.py"):
+        print("NO CONFIG FILE FOUND, DOWNLOADING TEMPLATES")
+        os.system("wget -O ~/.pco_settings.py https://raw.githubusercontent.com/K-256/planning_center_thingy/refs/heads/main/.pco_settings.py")
+        restart()
+    else: #load from hidden file if exists
+        config_spec = importlib.util.spec_from_file_location("pco_settings", os.path.expanduser("~")+"/.pco_config.py")
+        pco_settings = importlib.util.module_from_spec(config_spec)
+
+try:
+    cfg = pco_settings.cfg
+except:
+    print("CORRUPTED SETTINGS FILE")
+    sys.exit(99)
+
 username = "REPLACE_WITH_YOUR_TOKENS_ETC_FROM_PCO_DEV_PAGE"
 password = "REPLACE_WITH_YOUR_TOKENS_ETC_FROM_PCO_DEV_PAGE"
-#-------------------------KEYS SECTION-------------------------------------------------------
 
-#-------------------------CONFIG SECTION---------------------------
-campus_name = "PSL |"
 service_type_list = []
-preroll_offset = -123
 
-propresenter_active = False
-#enable ProPresenter send via HTTP API
-propresenter_machine_ip = "127.0.0.1"
-#IP for ProPresenter machine (should be 127.0.0.1 if on that machine)
-propresenter_machine_port = "1025"
-#port for ProPresenter machine
-filter_for_today_only = False
-#filter for plans only happening today
-filter_forward_days = 6
-#how many days to look forward for for plans
-filter_backward_days = 1
-#how many days ago to load plans from
-threading_load_plans = True
-#load plans as one thread per plan type
-blockprint = True
-#print main time in block format
-data_display = True
-#display all data instead of just time and item name
-file_timejson_output = False
-#write time data to time.json file
-web_display = True
-#host web display
-web_display_port = 6767
-
-
-configure_map = {
-    "propresenter_active": "True/False (HTTP ProPresenter StageMessage API)",
-    "propresenter_machine_ip": "ProPresenter machine IP or 127.0.0.1 if this computer",
-    "propresenter_machine_port": "ProPresenter machine port (found in settings)",
-    "campus_name": f"Campus name (eg. PSL) in format \"PSL |\"",
-    "preroll_offset": "negative int of preroll length in seconds (eg. -127)",
-    "filter_for_today_only": "True/False (capitalized first letter)",
-    "filter_forward_days": "number of days to look at in advance for plans",
-    "filter_backward_days": "if you need to load a multiday plan from yesterday etc.",
-    "threading_load_plans": "enable multithreader for plans loading",
-    "web_display": "enable web display (True/False)",
-    "web_display_port": "web display server port (ex. 6767)",
-    "data_display": "display extra data instead of just time block (True/False)",
-    "file_timejson_output": "write to time.json file (True/False)",
-    "blockprint": "print main time in block format (True/False)"
- } #map for splicer configurator
-
-persist_map = [
-    "username",
-    "password"
-] #map for additional settings used in crossover
-
-#-------------------------CONFIG SECTION---------------------------
 
 webdisplay_html_string = """
 <head>
@@ -187,39 +159,6 @@ service_list = [] #[[service type, plan number, dates+title]]
 
 system_name = socket.gethostname()
 
-def get_parameter(parameter):
-    with open(__file__, 'r') as file:
-        for line in file:
-            if parameter in line:
-                return ' '.join(line.split(' ')[2:]).replace('\n', '')
-        return 99
-
-def splicer(parameter, setting):
-    file_as_list = []
-    swapped = False
-    with open(__file__, 'r') as file:
-        for line in file:
-            if parameter in line and not swapped:
-                try:
-                    file_as_list.append(f"{parameter} = {int(setting)}\n")
-                except:
-                    if setting == "True" or setting == "False":
-                        file_as_list.append(f"{parameter} = {setting}\n")
-                    else:
-                        file_as_list.append(f"{parameter} = \"{setting}\"\n")
-                swapped = True
-            else:
-                file_as_list.append(line)
-    file.close()
-    with open(__file__, 'w') as file:
-        for line in file_as_list:
-            file.write(line)
-
-def restart():
-    sys.stdout.flush() 
-    sys.stderr.flush()
-    os.execv(sys.executable, ['python3'] + sys.argv)
-
 def update():
     print(f"{color.GREEN}--UPDATING--{color.RESET}")
     try:
@@ -228,29 +167,16 @@ def update():
     except:
         print(f"{color.BLUE}--UPDATING FROM GITHUB--{color.RESET}")
         os.system(f"curl -L -o {__file__} https://githubusercontent.com/K-256/planning_center_thingy/glassrock.py")
-    for i in configure_map:
-        print(f"REMAPPING {i}")
-        splicer(i, globals()[i])
-    for i in persist_map:
-        print(f"REMAPPING {i}")
-        splicer(i, globals()[i])
     print(f"{color.RED}--RESTARTING--{color.RESET}")
     time.sleep(1)
     restart()
 
 def configure(configure_map):
-    for parameter in configure_map:
-        os.system("clear")
-        print(color.YELLOW+color.BOLD+"------CONFIGURE------", color.RESET)
-        print(color.YELLOW+"   (enter to skip)", color.RESET)
-        print(color.MAGENTA+color.BOLD+parameter+" - "+color.RESET+configure_map[parameter], "\n")
-        setting = input(f"{color.GREEN}{parameter}{color.RESET} ({get_parameter(parameter)}) >> ")
-        if setting == '':
-            print(color.YELLOW, "SKIPPING", color.RESET)
-        else:
-            print(color.BLUE, f"SETTING {parameter} to {setting}", color.RESET)
-            splicer(parameter, setting)
-        time.sleep(0.25)
+    os.system("clear")
+    print(color.YELLOW+color.BOLD+"------CONFIGURE------", color.RESET)
+    print(color.YELLOW+"   (CTRL+X to save/exit)", color.RESET)
+    time.sleep(4)
+    os.system("~/.pco_config.py")
     print(f"{color.GREEN}FINISHED CONFIGURATION, RESETTING{color.RESET}")
     time.sleep(1)
     restart()
@@ -259,8 +185,8 @@ def load_service_types():
     print(f"{color.BLUE}LOADING SERVICE TYPES{color.RESET}")
     global service_type_list
     service_type_list = []
-    service_type_page = requests.get(f"https://api.planningcenteronline.com/services/v2/service_types?where[name]={campus_name}&per_page=100", auth=(username, password))
-    service_type_list = service_type_list + [[service_type['id'], 0, service_type['attributes']['name']] for service_type in service_type_page.json()['data'] if campus_name in service_type['attributes']['name']]
+    service_type_page = requests.get(f"https://api.planningcenteronline.com/services/v2/service_types?where[name]={cfg['campus_name']}&per_page=100", auth=(username, password))
+    service_type_list = service_type_list + [[service_type['id'], 0, service_type['attributes']['name']] for service_type in service_type_page.json()['data'] if cfg['campus_name'] in service_type['attributes']['name']]
 
 plan_loading_count = 0
 def load_plans_for_service_type(service_type):
@@ -281,12 +207,12 @@ def load_plans_for_service_type(service_type):
             now = now.strftime("%B %-d, %Y")
             #now_year = datetime.now() #drop?
             #now_year = now_year.strftime("%Y") #drop?
-            if filter_for_today_only:
+            if cfg['filter_for_today_only']:
                 service_list = service_list + [[service_type[0],p['id'],service_type_name+" - "+p['attributes']['dates']+" - "+str(p['attributes']['title'])] for p in service_page.json()['data'] if now in p['attributes']['dates']]
-            elif filter_forward_days > 0:
+            elif cfg['filter_forward_days'] > 0:
                 #service_list = service_list + [[service_type[0],p['id'],service_type_name+" - "+p['attributes']['dates']+" - "+str(p['attributes']['title'])] for p in service_page.json()['data'] if any(i in p['attributes']['dates'] for i in filter_forward_list)]
                 service_list = service_list + [[service_type[0],p['id'],service_type_name+" - "+p['attributes']['dates']+" - "+str(p['attributes']['title'])] for p in service_page.json()['data'] if any(i in p['attributes']['sort_date'] for i in filter_forward_list)]
-            elif filter_forward_days < 0: #depreciate?
+            elif cfg['filter_forward_days'] < 0: #depreciate?
                 service_list = service_list + [[service_type[0],p['id'],service_type_name+" - "+p['attributes']['dates']+" - "+str(p['attributes']['title'])] for p in service_page.json()['data'] if any(i in p['attributes']['dates'] and now_year in p['attributes']['dates'] for i in filter_forward_list+["&"])]
             else:
                 service_list = service_list + [[service_type[0],p['id'],service_type_name+" - "+p['attributes']['dates']+" - "+str(p['attributes']['title'])] for p in service_page.json()['data']]
@@ -304,10 +230,10 @@ def reload_plans():
     service_list = []
     global filter_forward_list
     #filter_forward_list = [(datetime.now() + timedelta(days=i)).strftime("%B %-d, %Y") for i in range(0, abs(filter_forward_days)) if filter_forward_days != 0]
-    filter_forward_list = [(datetime.now() + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(-(filter_backward_days), abs(filter_forward_days)) if filter_forward_days != 0]
+    filter_forward_list = [(datetime.now() + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(-(cfg['filter_backward_days']), abs(cfg['filter_forward_days'])) if cfg['filter_forward_days'] != 0]
     print(f"FFL: {filter_forward_list}")
     for service_type in service_type_list:
-        if threading_load_plans:
+        if cfg['threading_load_plans']:
             print(f"STARTING THREAD FOR SERVICE TYPE: {service_type}")
             _thread.start_new_thread(load_plans_for_service_type, (service_type,))
         else:
@@ -329,11 +255,11 @@ def print_help():
     print(f" HELP: {color.CYAN}\nL = live\nC = clear screen\nS = show plan(s)\nR = Reload plans\nU = update\nH = help\nSPLICER = configure app {color.RESET}")
 
 def set_propresenter_stage_message_text(message):
-    if propresenter_active == False:
+    if cfg['propresenter_active'] == False:
         return
     message = f"\"{message}\""
     headers = {'Content-Type': 'application/json'}
-    propresenter_timer_msg = requests.put(f"http://{propresenter_machine_ip}:{propresenter_machine_port}/v1/stage/message", data=message, headers=headers)
+    propresenter_timer_msg = requests.put(f"http://{cfg['propresenter_machine_ip']}:{cfg['propresenter_machine_port']}/v1/stage/message", data=message, headers=headers)
 
 block = "█"
 space = " "
@@ -562,7 +488,7 @@ def live_timing_front():
                     dt_object = datetime.strptime(i[0], "%Y-%m-%dT%H:%M:%SZ")
                     dt_unix = dt_object.timestamp()
                     time_difference = (dt_unix-time.time()) + datetime.now().astimezone().utcoffset().total_seconds()
-                    time_difference = time_difference + (preroll_offset if dt_object.weekday() == 6 else 0)
+                    time_difference = time_difference + (cfg['preroll_offset'] if dt_object.weekday() == 6 else 0)
                     if time_difference > 0:
                         time_remaining = int(round(time_difference, 0))
                         time_remaining_min, time_remaining_sec = divmod(time_remaining, 60)
@@ -578,11 +504,11 @@ def live_timing_front():
                     continue
                 os.system("clear")
                 #print time data
-                if blockprint:
+                if cfg['blockprint']:
                     print(blocktext(f"{time_remaining_min}:{time_remaining_sec}", color.YELLOW+color.BK_YELLOW)+color.RESET)
                 else:   
                     print(f"{color.YELLOW}{time_remaining_min}:{time_remaining_sec}{color.RESET}")
-                if data_display:
+                if cfg['data_display']:
                     c = "\n".join(current_plan_name.split("-"))
                     print(f"{color.BOLD}{color.CYAN}{c}{color.RESET}")
                     print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}")
@@ -609,13 +535,13 @@ def live_timing_front():
                 flag = [color.RED if time_remaining < 0 else color.GREEN][0] #green text if on time, red if behind
                 os.system("clear")
                 #print time data
-                if blockprint:
+                if cfg['blockprint']:
                     print(blocktext(f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}", flag+color.BK_GREEN if flag == color.GREEN else flag+color.BK_RED))
                 else:
                     print(f"{flag}{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}{color.RESET}")
                 print(f"{other_item_time_data['title'].center(28)}{color.RESET}")
                 current_item_name = other_item_time_data['title']
-                if data_display:
+                if cfg['data_display']:
                     print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}")
                     print(f"{color.BOLD}{flag}TIME ELAPSED:", time_elapsed)
                     print(f"TIME ITEM:", other_item_time_data['length'])
@@ -627,7 +553,7 @@ def live_timing_front():
             time_string = f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}{' - '+service_time_name if preservice_mode != 0 and service_time_name != None else ''}"
             set_propresenter_stage_message_text(time_string if stale < 70 else "NO PCO")
             current_timejson = f"{{ \"time\": \"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}\", \"current_item_name\": \"{current_item_name}\", \"next_item_name\": \"{next_item_name}\"}} "
-            if file_timejson_output:
+            if cfg['file_timejson_output']:
                 with open("time.json", "w") as timefile:
                     timefile.write(f"{current_timejson}\n")
             time.sleep(0.2)
@@ -670,8 +596,8 @@ if __name__ == '__main__':
     reload_plans()
     time.sleep(0.5)
     os.system("clear")
-    if web_display:
-            _thread.start_new_thread(server, (web_display_port,))
+    if cfg['web_display']:
+            _thread.start_new_thread(server, (cfg['web_display_port'],))
             print(" WEBDISPLAY ENABLED")
     show_plans()
     while True:
@@ -702,7 +628,7 @@ if __name__ == '__main__':
                         except Exception as e:
                             print("plan looks funny, reloading (plan is broken PCO sent garbage)")
                             time.sleep(3)
-                    print(color.GREEN+"PROPRESENTER ACTIVE"+color.RESET if propresenter_active else "PROPRESENTER DISABLED")
+                    print(color.GREEN+"PROPRESENTER ACTIVE"+color.RESET if cfg['propresenter_active'] else "PROPRESENTER DISABLED")
                     #plan_time_static_offset = int([i[1] for i in service_type_list if i[0] == service_type_id][0])
                     #attempted multithreading
                     t1 = _thread.start_new_thread(live_timing_back, (service_type_id, plan_id,))
