@@ -488,7 +488,7 @@ def live_timing_front():
                     dt_object = datetime.strptime(i[0], "%Y-%m-%dT%H:%M:%SZ")
                     dt_unix = dt_object.timestamp()
                     time_difference = (dt_unix-time.time()) + datetime.now().astimezone().utcoffset().total_seconds()
-                    time_difference = time_difference + (cfg['preroll_offset'] if dt_object.weekday() == 6 else 0)
+                    time_difference = time_difference + (cfg['preroll_offset'] if dt_object.weekday() in cfg['preroll_offset_days'] else 0)
                     if time_difference > 0:
                         time_remaining = int(round(time_difference, 0))
                         time_remaining_min, time_remaining_sec = divmod(time_remaining, 60)
