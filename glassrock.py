@@ -23,7 +23,7 @@ password = "REPLACE_WITH_YOUR_TOKENS_ETC_FROM_PCO_DEV_PAGE"
 #-------------------------CONFIG SECTION---------------------------
 campus_name = "PSL |"
 service_type_list = []
-preroll_offset = -127
+preroll_offset = -123
 
 propresenter_active = False
 #enable ProPresenter send via HTTP API
@@ -33,15 +33,17 @@ propresenter_machine_port = "1025"
 #port for ProPresenter machine
 filter_for_today_only = False
 #filter for plans only happening today
-filter_forward_days = 4
+filter_forward_days = 6
 #how many days to look forward for for plans
 filter_backward_days = 1
 #how many days ago to load plans from
 threading_load_plans = True
-#load service_types/plans in threaded mode
+#load plans as one thread per plan type
+blockprint = True
+#print main time in block format
 data_display = True
 #display all data instead of just time and item name
-file_timejson_output = True
+file_timejson_output = False
 #write time data to time.json file
 web_display = True
 #host web display
@@ -58,14 +60,16 @@ configure_map = {
     "filter_forward_days": "number of days to look at in advance for plans",
     "filter_backward_days": "if you need to load a multiday plan from yesterday etc.",
     "threading_load_plans": "enable multithreader for plans loading",
-    "data_display": "display extra data instead of just time block",
-    "timejson_output": "write to time.json file for web display (True/False)"
+    "web_display": "enable web display (True/False)",
+    "web_display_port": "web display server port (ex. 6767)",
+    "data_display": "display extra data instead of just time block (True/False)",
+    "file_timejson_output": "write to time.json file (True/False)",
+    "blockprint": "print main time in block format (True/False)"
  } #map for splicer configurator
 
 persist_map = [
     "username",
-    "password",
-    "person_id"
+    "password"
 ] #map for additional settings used in crossover
 
 #-------------------------CONFIG SECTION---------------------------
@@ -200,7 +204,7 @@ def splicer(parameter, setting):
                     file_as_list.append(f"{parameter} = {int(setting)}\n")
                 except:
                     if setting == "True" or setting == "False":
-                        file_as_list.append(f"{parameter} = {setting}")
+                        file_as_list.append(f"{parameter} = {setting}\n")
                     else:
                         file_as_list.append(f"{parameter} = \"{setting}\"\n")
                 swapped = True
@@ -256,7 +260,7 @@ def load_service_types():
     global service_type_list
     service_type_list = []
     service_type_page = requests.get(f"https://api.planningcenteronline.com/services/v2/service_types?where[name]={campus_name}&per_page=100", auth=(username, password))
-    service_type_list = service_type_list + [[service_type['id'], -18000, service_type['attributes']['name']] for service_type in service_type_page.json()['data'] if campus_name in service_type['attributes']['name']]
+    service_type_list = service_type_list + [[service_type['id'], 0, service_type['attributes']['name']] for service_type in service_type_page.json()['data'] if campus_name in service_type['attributes']['name']]
 
 plan_loading_count = 0
 def load_plans_for_service_type(service_type):
@@ -267,12 +271,12 @@ def load_plans_for_service_type(service_type):
     while not done:
         try:
             print(f"LOADING SERVICE TYPE: {color.BLUE}{service_type[0]}{color.RESET}")
-            total_service_count = requests.get(f"https://api.planningcenteronline.com/services/v2/service_types/{service_type[0]}/plans?offset=9999", auth=(username, password))
+            total_service_count = requests.get(f"https://api.planningcenteronline.com/services/v2/service_types/{service_type[0]}/plans?offset=9999", auth=(username, password), timeout=4)
             total_service_count = int(total_service_count.json()['meta']['total_count'])
             print(f"SERVICE COUNT: {color.CYAN}{total_service_count}{color.RESET}")
             service_type_name = service_type[2]
             print(f"SERVICE TYPE NAME: {color.CYAN}{service_type_name}{color.RESET}")
-            service_page = requests.get(f"http://api.planningcenteronline.com/services/v2/service_types/{service_type[0]}/plans?offset={total_service_count-25}", auth=(username, password))
+            service_page = requests.get(f"http://api.planningcenteronline.com/services/v2/service_types/{service_type[0]}/plans?offset={total_service_count-25}", auth=(username, password), timeout=4)
             now = datetime.now()
             now = now.strftime("%B %-d, %Y")
             #now_year = datetime.now() #drop?
@@ -447,6 +451,7 @@ preservice_mode = 1
 stale = 0
 last_error = ""
 current_timejson = ""
+fast_speed = False
 
 #timing backend, contains all blocking API requests
 def live_timing_back(service_type_id, plan_id):
@@ -505,7 +510,7 @@ def live_timing_back(service_type_id, plan_id):
                 for plan_times_offset in range(0, plan_times_count, 25): #load all plan time pages
                     r_plan_times = requests.get(f"https://api.planningcenteronline.com/services/v2/service_types/{service_type_id}/plans/{plan_id}/plan_times?offset={plan_times_offset}", auth=(username, password), timeout=4)
                     r_plan_times = r_plan_times.json()
-                    new_plan_times = new_plan_times + [[i['attributes']['starts_at'], i['attributes']['name']] for i in r_plan_times['data']]
+                    new_plan_times = new_plan_times + [[i['attributes']['starts_at'], i['attributes']['name']] for i in r_plan_times['data'] if i['attributes']['time_type'] != "other"]
                 plan_times = new_plan_times #separate variables needed bc loading time of requests
                 swapped = True
                 while swapped: #bubble sort plan times
@@ -514,11 +519,12 @@ def live_timing_back(service_type_id, plan_id):
                         if float(datetime.strptime(plan_times[i][0], "%Y-%m-%dT%H:%M:%SZ").timestamp()) > float(datetime.strptime(plan_times[i+1][0], "%Y-%m-%dT%H:%M:%SZ").timestamp()):
                             plan_times[i+1], plan_times[i] = plan_times[i], plan_times[i+1]
                             swapped = True
+                next_item_time = ""
                 plan_times_update_time = time.time()
                 crashes = 0
                 preservice_mode = 1
                 stale = 0
-                time.sleep(10 if time_remaining > 60 else 2)
+                time.sleep(10 if not fast_speed else 1)
             except Exception as e: #if PCO is legit down or if there is no internet
                 crashes += 1
                 stale += 1
@@ -555,7 +561,8 @@ def live_timing_front():
                     next_item_name = ""
                     dt_object = datetime.strptime(i[0], "%Y-%m-%dT%H:%M:%SZ")
                     dt_unix = dt_object.timestamp()
-                    time_difference = (dt_unix-time.time()) + datetime.now().astimezone().utcoffset().total_seconds() + preroll_offset
+                    time_difference = (dt_unix-time.time()) + datetime.now().astimezone().utcoffset().total_seconds()
+                    time_difference = time_difference + (preroll_offset if dt_object.weekday() == 6 else 0)
                     if time_difference > 0:
                         time_remaining = int(round(time_difference, 0))
                         time_remaining_min, time_remaining_sec = divmod(time_remaining, 60)
@@ -571,7 +578,10 @@ def live_timing_front():
                     continue
                 os.system("clear")
                 #print time data
-                print(blocktext(f"{time_remaining_min}:{time_remaining_sec}", color.YELLOW+color.BK_YELLOW)+color.RESET)#, end="", flush=True)
+                if blockprint:
+                    print(blocktext(f"{time_remaining_min}:{time_remaining_sec}", color.YELLOW+color.BK_YELLOW)+color.RESET)
+                else:   
+                    print(f"{color.YELLOW}{time_remaining_min}:{time_remaining_sec}{color.RESET}")
                 if data_display:
                     c = "\n".join(current_plan_name.split("-"))
                     print(f"{color.BOLD}{color.CYAN}{c}{color.RESET}")
@@ -579,6 +589,7 @@ def live_timing_front():
                     print(f"{color.YELLOW}{color.BOLD}----------P/S---------{color.RESET}")
                     print(f"{color.MAGENTA}NEXT TIME: {color.RESET}{color.RED if time_remaining < 0 else ''}{service_time}Z")                                                                                                                              
                     print(f"{color.MAGENTA}TIME NAME: {color.RESET}{service_time_name}")
+                    print(f"\n{[color.RED+str(stale)+color.RESET if stale > 15 else stale][0]} - {last_error}")
                 time.sleep(0.8)
             elif preservice_mode == 0: #service mode
                 current_item_time_data = current_item
@@ -598,7 +609,10 @@ def live_timing_front():
                 flag = [color.RED if time_remaining < 0 else color.GREEN][0] #green text if on time, red if behind
                 os.system("clear")
                 #print time data
-                print(blocktext(f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}", flag+color.BK_GREEN if flag == color.GREEN else flag+color.BK_RED))
+                if blockprint:
+                    print(blocktext(f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}", flag+color.BK_GREEN if flag == color.GREEN else flag+color.BK_RED))
+                else:
+                    print(f"{flag}{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}{color.RESET}")
                 print(f"{other_item_time_data['title'].center(28)}{color.RESET}")
                 current_item_name = other_item_time_data['title']
                 if data_display:
@@ -609,6 +623,7 @@ def live_timing_front():
                     for i in other_item_time_data:
                         print([color.UNDERLINE+i+color.RESET+color.BLUE+" "+other_item_time_data[i]+"\n"+color.RESET if "ti" in i and other_item_time_data[i] != None else ''][0], end='', flush=True)                                                                          
                     print(f"\n{[color.RED+str(stale)+color.RESET if stale > 15 else stale][0]} - {last_error}")
+                fast_speed = True
             time_string = f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}{' - '+service_time_name if preservice_mode != 0 and service_time_name != None else ''}"
             set_propresenter_stage_message_text(time_string if stale < 70 else "NO PCO")
             current_timejson = f"{{ \"time\": \"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}\", \"current_item_name\": \"{current_item_name}\", \"next_item_name\": \"{next_item_name}\"}} "
@@ -640,7 +655,6 @@ class request_handler(BaseHTTPRequestHandler):
             self.wfile.write(webdisplay_html_string.encode('utf-8'))
 
 def server(port=6767):
-    print(f"{color.GREEN}WEBDISPLAY ENABLED{color.RESET}")
     server_address = ('', port)
     httpd = HTTPServer(server_address, request_handler)
     try:
@@ -658,6 +672,7 @@ if __name__ == '__main__':
     os.system("clear")
     if web_display:
             _thread.start_new_thread(server, (web_display_port,))
+            print(" WEBDISPLAY ENABLED")
     show_plans()
     while True:
         try:
