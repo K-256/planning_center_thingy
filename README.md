@@ -19,6 +19,7 @@ Planning Center Live CLI Tool
 - 15. `file_timejson_output` Write time data to time.json file (probably being removed soon)
 - 16. `web_display` Enable builtin web server for time display
 - 17. `web_display_port` Port to host web display on
+
 # RUN COMMANDS
 - `L` - Connect to PCO live
 - `S` - Show loaded plans
@@ -27,8 +28,9 @@ Planning Center Live CLI Tool
 - `X` - open config file
 
 # ProPresenter API Connection
-- Enable in ProPresenter settings (under "network")
-- Set machine ip and port in pco_config.json to match
+- Enable in ProPresenter settings (under "Network" box)
+- Set machine IP and port in pco_config.json to match
+  - NOTE: can set IP to 127.0.0.1 if on the computer running ProPresenter
 - Make sure your stage display has a text box that shows the stage mesage
 # Why is it called glass rock?
 - A glass rock looks cool and if you drop it, it explodes

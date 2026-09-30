@@ -30,6 +30,7 @@ try:
 except Exception as e:
     try:
         with open("pco_config.json", "r") as file:
+            print("LOADING LOCAL CONFIG FILE (NONSTANDARD LOCATION)")
             cfg = json.load(file)
     except:
         print(f"NO CONFIG FILE FOUND, DOWNLOADING TEMPLATE {e}")
@@ -175,12 +176,16 @@ def update():
     time.sleep(1)
     restart()
 
+def clear():
+    if not cfg['disable_clear']:
+        os.system("clear")
+
 def configure():
-    os.system("clear")
+    clear()
     print(color.YELLOW+color.BOLD+"------CONFIGURE------", color.RESET)
     print(color.YELLOW+"   (CTRL+X to save/exit)", color.RESET)
     time.sleep(4)
-    subprocess.run(["nano", "~/.pco_config.json"])
+    subprocess.run(["nano", f"{os.path.expanduser('~')}/.pco_config.json"])
     print(f"{color.GREEN}FINISHED CONFIGURATION, RESETTING{color.RESET}")
     time.sleep(1)
     restart()
@@ -400,7 +405,7 @@ def live_timing_back(service_type_id, plan_id):
     stale = 0
     print("BACKEND START")
     while True:
-        try:
+        try: #there may be something triggering an error in this block?
             current_item_time_data = requests.get(rl['data']['links']['current_item_time'], timeout=8, auth=(username, password))
             current_item_time_data = current_item_time_data.json()
             current_item_id_new = current_item_time_data['data']['relationships']['item']['data']['id']
@@ -422,8 +427,7 @@ def live_timing_back(service_type_id, plan_id):
             stale = 0
             time.sleep(1.5)
         except Exception as e:
-            print(f"E {e}")
-            # last_error = f"E {e}"
+            last_error = f"{e}"
             try: #check if in preservice
                 try:
                     if rl['data']['links']['current_item_time'] != None: #if current item time shows up
@@ -449,7 +453,7 @@ def live_timing_back(service_type_id, plan_id):
                         if float(datetime.strptime(plan_times[i][0], "%Y-%m-%dT%H:%M:%SZ").timestamp()) > float(datetime.strptime(plan_times[i+1][0], "%Y-%m-%dT%H:%M:%SZ").timestamp()):
                             plan_times[i+1], plan_times[i] = plan_times[i], plan_times[i+1]
                             swapped = True
-                next_item_time = ""
+                # next_item_time = ""
                 plan_times_update_time = time.time()
                 crashes = 0
                 preservice_mode = 1
@@ -470,6 +474,7 @@ def live_timing_front():
     global stale
     global last_error
     global current_timejson
+    global next_item_name
     current_item_name = ""
     print("FRONTEND START")
     set_propresenter_stage_message_text("T-START")
@@ -506,11 +511,11 @@ def live_timing_front():
                     set_propresenter_stage_message_text("NO SERVICE")
                     time.sleep(1)
                     continue
-                os.system("clear")
+                clear()
                 #print time data
                 if cfg['blockprint']:
                     print(blocktext(f"{time_remaining_min}:{time_remaining_sec}", color.YELLOW+color.BK_YELLOW)+color.RESET)
-                else:   
+                else:
                     print(f"{color.YELLOW}{time_remaining_min}:{time_remaining_sec}{color.RESET}")
                 if cfg['data_display']:
                     c = "\n".join(current_plan_name.split("-"))
@@ -537,7 +542,7 @@ def live_timing_front():
                 time_remaining_min = int(round(time_remaining_min, 0)) #round time remaining (not needed?)
                 time_remaining_sec = [int(round(time_remaining_sec, 0)) if time_remaining_sec > 9 else "0"+str(int(round(time_remaining_sec, 0)))][0]
                 flag = [color.RED if time_remaining < 0 else color.GREEN][0] #green text if on time, red if behind
-                os.system("clear")
+                clear()
                 #print time data
                 if cfg['blockprint']:
                     print(blocktext(f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}", flag+color.BK_GREEN if flag == color.GREEN else flag+color.BK_RED))
@@ -599,7 +604,7 @@ if __name__ == '__main__':
     time.sleep(1.5)
     reload_plans()
     time.sleep(0.5)
-    os.system("clear")
+    clear()
     if cfg['web_display']:
             _thread.start_new_thread(server, (cfg['web_display_port'],))
             print(" WEBDISPLAY ENABLED")
