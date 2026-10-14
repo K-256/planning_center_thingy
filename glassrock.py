@@ -17,6 +17,7 @@ import _thread
 import socket
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
+# Restart and reload code from file
 def restart():
     sys.stdout.flush() 
     sys.stderr.flush()
@@ -370,23 +371,53 @@ def blocktext(text, colorblock):
             output_list[i] = output_list[i]+''.join(colorblock+char if char == b else color.RESET+char for char in letters[letter][i])+color.RESET+s
     return "\n".join(output_list)
 
-#init all variables that will become globals
-service_type_id = 0
-plan_id = 0
-#rl = []
-current_item = []
+#init all variables that will become globals (PCO section)
+# service_type_id = 0
+# plan_id = 0
+current_item = ""
 current_item_update_time = 0
 next_item_name = ""
 other_items = []
 other_items_update_time = 0
 plan_times = []
 plan_times_update_time = 0
+service_items = {}
+
+preroll_offset = int(cfg['preroll_offset_default'])
 time_remaining = 0
 preservice_mode = 1
-stale = 0
+
 last_error = ""
 current_timejson = ""
 fast_speed = False
+
+#init HyperDeck control variables
+hyperdeck_control = 0 # 0 is stop, 1 is record
+hyperdeck_state = {} # state dict for hyperdecks
+time_since_service_stop = 0
+
+def hyperdeck_interface(hyperdeck_ip, hyperdeck_port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sigmasock:
+        print(f"CONNECTING TO HYPERDECK {hyperdeck_ip} port {hyperdeck_port}")
+        sigmasock.connect((hyperdeck_ip, hyperdeck_port))
+        print("connected")
+        internal_state = "unknown"
+        time.sleep(2)
+        while True:
+            command = "transport info\n"
+            sigmasock.sendall(command.encode('utf-8'))
+            response = sigmasock.recv(4096)
+            r = response.decode('utf-8')
+            r = r.split("\n")
+            if "208 transport info" in r[0]:
+                hyperdeck_state[hyperdeck_ip] = r[1][:-1]
+                if hyperdeck_control == 1 and "record" not in r[1]:
+                    sigmasock.sendall("record\n".encode('utf-8'))
+                if hyperdeck_control == 0 and "record" in r[1]:
+                    sigmasock.sendall("stop\n".encode('utf-8'))
+            else:
+                hyperdeck_state[hyperdeck_ip] = "unknown"
+            time.sleep(1)
 
 #timing backend, contains all blocking API requests
 def live_timing_back(service_type_id, plan_id):
@@ -397,12 +428,13 @@ def live_timing_back(service_type_id, plan_id):
     global other_items_update_time
     global plan_times
     global plan_times_update_time
-    global stale
     global preservice_mode
     global last_error
+    global time_since_service_stop
+    global hyperdeck_control
+    global service_items
     current_item_id = 0
     crashes = 0
-    stale = 0
     print("BACKEND START")
     while True:
         try: #there may be something triggering an error in this block?
@@ -424,30 +456,36 @@ def live_timing_back(service_type_id, plan_id):
             other_items_update_time = time.time()
             crashes = 0
             preservice_mode = 0
-            stale = 0
+            time_since_service_stop = 0
             time.sleep(1.5)
         except Exception as e:
-            last_error = f"{e}"
+            last_error = f"BACKEND STAGE 1 ERROR - {e}"
             try: #check if in preservice
+                #check if rl data is useable
                 try:
+                    #needs a try except to catch rl not actually existing
                     if rl['data']['links']['current_item_time'] != None: #if current item time shows up
+                        #needs if bc sometimes rl is blank
                         print("CT/RL OK")
                     else:
                         print(0/0)
                 except:
-                    #print("RELOADING PLAN DATA (RL)")
+                    #reload rl data if not good
+                    print("RELOADING RL")
                     rl = requests.get(f"https://api.planningcenteronline.com/services/v2/service_types/{service_type_id}/plans/{plan_id}/live", auth=(username, password))
                     rl = rl.json() #all after this will only be using json obect, not request code etc
                 new_plan_times = []
                 plan_times_count = requests.get(f"https://api.planningcenteronline.com/services/v2/service_types/{service_type_id}/plans/{plan_id}/plan_times", auth=(username, password), timeout=4)
                 plan_times_count = plan_times_count.json()['meta']['total_count']
-                for plan_times_offset in range(0, plan_times_count, 25): #load all plan time pages
+                # Load all plan time pages
+                for plan_times_offset in range(0, plan_times_count, 25):
                     r_plan_times = requests.get(f"https://api.planningcenteronline.com/services/v2/service_types/{service_type_id}/plans/{plan_id}/plan_times?offset={plan_times_offset}", auth=(username, password), timeout=4)
                     r_plan_times = r_plan_times.json()
                     new_plan_times = new_plan_times + [[i['attributes']['starts_at'], i['attributes']['name']] for i in r_plan_times['data'] if i['attributes']['time_type'] != "other"]
                 plan_times = new_plan_times #separate variables needed bc loading time of requests
+                # Bubble sort plan times
                 swapped = True
-                while swapped: #bubble sort plan times
+                while swapped:
                     swapped = False
                     for i in range(0, len(plan_times)-1):
                         if float(datetime.strptime(plan_times[i][0], "%Y-%m-%dT%H:%M:%SZ").timestamp()) > float(datetime.strptime(plan_times[i+1][0], "%Y-%m-%dT%H:%M:%SZ").timestamp()):
@@ -455,14 +493,10 @@ def live_timing_back(service_type_id, plan_id):
                             swapped = True
                 # next_item_time = ""
                 plan_times_update_time = time.time()
-                crashes = 0
                 preservice_mode = 1
-                stale = 0
-                time.sleep(10 if not fast_speed else 1)
+                time_since_service_stop += 10 if time_remaining > 60 else 1
+                time.sleep(10 if time_remaining > 60 else 1)
             except Exception as e: #if PCO is legit down or if there is no internet
-                crashes += 1
-                stale += 1
-                #print(f"CRASH: {e}")
                 last_error = f"BACKEND ERROR {e}"
                 time.sleep([crashes/2 if crashes < 16 else 8][0])
 
@@ -471,33 +505,38 @@ any_update_time = 0
 def live_timing_front():
     global any_update_time #needed?
     global time_remaining
-    global stale
     global last_error
     global current_timejson
+    global service_items
     global next_item_name
-    current_item_name = ""
+    global service_time_name
+    global hyperdeck_control
+    previous_t = ""
     print("FRONTEND START")
     set_propresenter_stage_message_text("T-START")
     time.sleep(2)
-    stale = 0 #start stale at zero
     #preservice_mode = 1 #start in preservice mode unless first pass of Live API works
     while True:
-        try:
+        # try:
+        if True:
             if preservice_mode != 0: #preservice mode
                 time_until_next_service = plan_times
                 today = date.today()
                 plan_ok = 0
                 time_remaining = 0
                 service_time = ''
+                # Check all service times
                 for i in time_until_next_service:
                     service_time = i[0] #.split("T")[1][:-1] #for printing
                     service_time_name = i[1] #for printing
                     current_item_name = service_time_name
-                    next_item_name = ""
+                    next_item_name = service_time_name
                     dt_object = datetime.strptime(i[0], "%Y-%m-%dT%H:%M:%SZ")
                     dt_unix = dt_object.timestamp()
                     time_difference = (dt_unix-time.time()) + datetime.now().astimezone().utcoffset().total_seconds()
-                    time_difference = time_difference + (cfg['preroll_offset'] if dt_object.weekday() in cfg['preroll_offset_days'] else 0)
+                    time_difference = time_difference - preroll_offset
+                    #(cfg['preroll_offset'] if dt_object.weekday() in cfg['preroll_offset_days'] else 0)
+                    # If found time is in the future
                     if time_difference > 0:
                         time_remaining = int(round(time_difference, 0))
                         time_remaining_min, time_remaining_sec = divmod(time_remaining, 60)
@@ -505,27 +544,30 @@ def live_timing_front():
                         #print(f"NEXT SERVICE TIME: {i[1]}")
                         plan_ok = 1
                         break
+                # HyperDeck triggers
+                if time_remaining < cfg['hyperdeck_trigger_pre']+preroll_offset and service_time_name == None:
+                    # if past hyperdeck trigger point and an actual service time
+                    hyperdeck_control = 1
+                if time_since_service_stop > cfg['hyperdeck_trigger_post']:
+                    # If been longer than trigger tail stop hyperdecks
+                    hyperdeck_control = 0
+                # if plan not OK then show no service message
                 if plan_ok == 0:
-                    print(f"{color.RED}NO SERVICE TIME MATCH{color.RESET}")
-                    stale += 80
+                    t = f"{color.RED}NO SERVICE TIME MATCH{color.RESET}"
+                    time_remaining_min = 0
+                    time_remaining_sec = 0
+                    time_remaining = 0
                     set_propresenter_stage_message_text("NO SERVICE")
-                    time.sleep(1)
-                    continue
-                clear()
-                #print time data
-                if cfg['blockprint']:
-                    print(blocktext(f"{time_remaining_min}:{time_remaining_sec}", color.YELLOW+color.BK_YELLOW)+color.RESET)
                 else:
-                    print(f"{color.YELLOW}{time_remaining_min}:{time_remaining_sec}{color.RESET}")
-                if cfg['data_display']:
-                    c = "\n".join(current_plan_name.split("-"))
-                    print(f"{color.BOLD}{color.CYAN}{c}{color.RESET}")
-                    print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}")
-                    print(f"{color.YELLOW}{color.BOLD}----------P/S---------{color.RESET}")
-                    print(f"{color.MAGENTA}NEXT TIME: {color.RESET}{color.RED if time_remaining < 0 else ''}{service_time}Z")                                                                                                                              
-                    print(f"{color.MAGENTA}TIME NAME: {color.RESET}{service_time_name}")
-                    print(f"\n{[color.RED+str(stale)+color.RESET if stale > 15 else stale][0]} - {last_error}")
-                time.sleep(0.8)
+                    #print normal time data only if plan good
+                    # if cfg['blockprint']:
+                    t = blocktext(f"{time_remaining_min}:{time_remaining_sec}", color.YELLOW+color.BK_YELLOW) if cfg['blockprint'] else ''
+                    t = f"{color.YELLOW}{time_remaining_min}:{time_remaining_sec}{color.RESET}" if not cfg['blockprint'] else t
+                    t += f"\n{color.BLUE+"\n".join(current_plan_name.split("-"))+color.RESET}\n"
+                    t += f"{color.BOLD}COMPUTER: {color.CYAN}{system_name}{color.RESET}\n"
+                    t += f"{color.YELLOW}{color.BOLD}----------P/S---------{color.RESET}\n"
+                    t += f"{color.MAGENTA}NEXT TIME: {color.RESET}{service_time}\n"
+                    t += f"{color.MAGENTA}TIME NAME: {color.RESET}{service_time_name}\n"
             elif preservice_mode == 0: #service mode
                 current_item_time_data = current_item
                 other_item_time_data = other_items
@@ -542,36 +584,34 @@ def live_timing_front():
                 time_remaining_min = int(round(time_remaining_min, 0)) #round time remaining (not needed?)
                 time_remaining_sec = [int(round(time_remaining_sec, 0)) if time_remaining_sec > 9 else "0"+str(int(round(time_remaining_sec, 0)))][0]
                 flag = [color.RED if time_remaining < 0 else color.GREEN][0] #green text if on time, red if behind
-                clear()
                 #print time data
                 if cfg['blockprint']:
-                    print(blocktext(f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}", flag+color.BK_GREEN if flag == color.GREEN else flag+color.BK_RED))
+                    t = blocktext(f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}", flag+color.BK_GREEN if flag == color.GREEN else flag+color.BK_RED)
                 else:
-                    print(f"{flag}{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}{color.RESET}")
-                print(f"{other_item_time_data['title'].center(28)}{color.RESET}")
+                    t = f"{color.BOLD}{color.UNDERLINE}{flag}TIME REM:"+f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}{color.RESET}\n".rjust(16)
+                    t += f"{flag}TIME ELAPSED: "+f"{time_elapsed}{color.RESET}\n".rjust(11)
+                    t += f"{flag}TIME ITEM: "+f"{other_item_time_data['length']}{color.RESET}\n".rjust(14)
+                    t += f"{flag}TIME OFFSET: "+f"{time_offset}{color.RESET}\n".rjust(12)
+                    t += f"ITEM TITLE: "+f"{current_item_name}{color.RESET}\n".rjust(14)
+                    t += f"{color.BOLD}COMPUTER: {color.CYAN}{system_name}{color.RESET}\n"
+                hyperdeck_control = 1 if hyperdeck_control != 1 else hyperdeck_control #set hyperdeck control if not already set
                 current_item_name = other_item_time_data['title']
-                if cfg['data_display']:
-                    print(f"{color.BOLD}COMPUTER NAME: {color.CYAN}{system_name}{color.RESET}")
-                    print(f"{color.BOLD}{flag}TIME ELAPSED:", time_elapsed)
-                    print(f"TIME ITEM:", other_item_time_data['length'])
-                    print(f"TIME OFFSET:", time_offset, color.RESET)
-                    for i in other_item_time_data:
-                        print([color.UNDERLINE+i+color.RESET+color.BLUE+" "+other_item_time_data[i]+"\n"+color.RESET if "ti" in i and other_item_time_data[i] != None else ''][0], end='', flush=True)                                                                          
-                    print(f"\n{[color.RED+str(stale)+color.RESET if stale > 15 else stale][0]} - {last_error}")
-                fast_speed = True
-            time_string = f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}{' - '+service_time_name if preservice_mode != 0 and service_time_name != None else ''}"
-            set_propresenter_stage_message_text(time_string if stale < 70 else "NO PCO")
-            current_timejson = f"{{ \"time\": \"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}\", \"current_item_name\": \"{current_item_name}\", \"next_item_name\": \"{next_item_name}\"}} "
-            if cfg['file_timejson_output']:
-                with open("time.json", "w") as timefile:
-                    timefile.write(f"{current_timejson}\n")
+            t += f"\n - HYPERDECK - \n{"\n".join(i+" - "+hyperdeck_state[i] for i in hyperdeck_state)}" if cfg['hyperdeck_control_enable'] else ''
+            t += f"\nHDC: {hyperdeck_control} - TSS: {time_since_service_stop} - HDT: {preroll_offset}+{cfg['hyperdeck_trigger_pre']}" if cfg['hyperdeck_control_enable'] else ''
+            t += f"\n\n{last_error} - {last_error}" if cfg['show_last_error'] else ''
+            if t != previous_t:
+                clear()
+                print(t)
+                time_string = f"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}{' - '+service_time_name if preservice_mode != 0 and service_time_name != None else ''}"
+                set_propresenter_stage_message_text(time_string)
+                current_timejson = f"{{ \"time\": \"{'-' if time_remaining < 0 else ''}{time_remaining_min}:{time_remaining_sec}\", \"current_item_name\": \"{current_item_name}\", \"next_item_name\": \"{next_item_name}\"}} "
+            previous_t = t
             time.sleep(0.2)
-        except Exception as e:
-            #print(f"TIMING FRONTEND ERROR: {e}")
-            last_error = f"FRONTEND ERROR {e}"
-            stale += 50
-            time.sleep(1)
-            continue
+        # except Exception as e:
+        #     last_error = f"FRONTEND ERROR {e}"
+        #     print(last_error)
+        #     time.sleep(1)
+        #     continue
 
 class request_handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -637,11 +677,22 @@ if __name__ == '__main__':
                         except Exception as e:
                             print("plan looks funny, reloading (plan is broken PCO sent garbage)")
                             time.sleep(3)
-                    print(color.GREEN+"PROPRESENTER ACTIVE"+color.RESET if cfg['propresenter_active'] else "PROPRESENTER DISABLED")
-                    #plan_time_static_offset = int([i[1] for i in service_type_list if i[0] == service_type_id][0])
+                    # Get Preroll offset time
+                    service_items = requests.get(f"https://api.planningcenteronline.com/services/v2/service_types/{service_type_id}/plans/{plan_id}/live/items", auth=(username, password), timeout=8)
+                    service_items = service_items.json()['data']
+                    for item in service_items:
+                        # print(item)
+                        if item['attributes']['service_position'] == "pre":
+                            preroll_offset = float(item['attributes']['length'])
+                            print(f"LOADED PREROLL OFFSET OF {color.BLUE}{preroll_offset}{color.RESET} FROM ITEM {color.BLUE}{item['attributes']['title']}{color.RESET}")
+                            break
+                    time.sleep(2)
                     #attempted multithreading
                     t1 = _thread.start_new_thread(live_timing_back, (service_type_id, plan_id,))
                     t2 = _thread.start_new_thread(live_timing_front, ())
+                    if cfg['hyperdeck_control_enable']:
+                        for ip in cfg['hyperdeck_ip_list']:
+                            _thread.start_new_thread(hyperdeck_interface, (ip, cfg['hyperdeck_port']))
                 continue #so can have second handlers for each letter than only run when no args
             elif c[0] == "K":
                 set_propresenter_stage_message_text("RLS")

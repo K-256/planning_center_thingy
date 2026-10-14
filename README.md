@@ -5,20 +5,25 @@ Planning Center Live CLI Tool
 - 1. `username` set to token username generated in PCO Developer site
 - 2. `password` set to token password generated in PCO Developer site
 - 3. `campus_name` set to campus name text to filter for plans by
-- 4. `preroll_offset` offset from actual service time to preroll start
-- 5. `preroll_offset_days` days of the week to enable preroll offset for (int, Monday = 0)
-- 6. `propresenter_active` enable ProPresenter API send
-- 7. `propresenter_machine_ip` IP addr or hostname (or 127.0.0.1) of ProPresenter computer
-- 8. `propresenter_machine_port` ProPresenter machine HTTP API port (found in network settings)
-- 9. `filter_for_today_only` Only show plans happening today (overrides filter forward/backward)
-- 10. `filter_forward_days` How many days forward to look for plans
-- 11. `filter_backward_days` How many days backward to loo for plans
-- 12. `threading_load_plans` Enable loading plans with multithreading
-- 13. `blockprint` Use block numbers (probably being removed soon)
-- 14. `data_display` Show other information besides time remaining in item
-- 15. `file_timejson_output` Write time data to time.json file (probably being removed soon)
-- 16. `web_display` Enable builtin web server for time display
-- 17. `web_display_port` Port to host web display on
+- 4. `preroll_offset_default` default offset from actual service time if no 'pre' item found
+- 5. `propresenter_active` enable ProPresenter API send
+- 6. `propresenter_machine_ip` IP addr or hostname (or 127.0.0.1) of ProPresenter computer
+- 7. `propresenter_machine_port` ProPresenter machine HTTP API port (found in network settings)
+- 8. `filter_for_today_only` Only show plans happening today (overrides filter forward/backward)
+- 9. `filter_forward_days` How many days forward to look for plans
+- 10. `filter_backward_days` How many days backward to loo for plans
+- 11. `threading_load_plans` Enable loading plans with multithreading
+- 12. `blockprint` Use block numbers (probably being removed soon)
+- 13. `other_items_display` Show other information besides time remaining in item
+- 14. `web_display` Enable builtin web server for time display
+- 15. `web_display_port` Port to host web display on
+- 16. `disable_clear` Disable clear command (for debugging)
+- 17. `hyperdeck_control_enable` Enable Hyperdeck network control
+- 18. `hyperdeck_port` Hyperdeck network control port (should be 9993)
+- 19. `hyperdeck_trigger_pre` Seconds before 1st item time to start recording (stacks with preroll offset)
+- 20. `hyperdeck_trigger_post` Seconds after PCO stops to stop recording
+- 21. `hyperdeck_trigger_days` Days to use hyperdeck control (not built yet)
+- 22. `show_last_error` Put debugging message containing most recent error at bottom of print
 
 # RUN COMMANDS
 - `L` - Connect to PCO live
