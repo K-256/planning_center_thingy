@@ -35,7 +35,7 @@ except Exception as e:
             cfg = json.load(file)
     except:
         print(f"NO CONFIG FILE FOUND, DOWNLOADING TEMPLATE {e}")
-        os.system(f"wget -O {os.path.expanduser('~')+'/.pco_config.json'} https://raw.githubusercontent.com/K-256/planning_center_thingy/refs/heads/main/pco_config.json")
+        os.system(f"curl -l -o {os.path.expanduser('~')+'/.pco_config.json'} https://raw.githubusercontent.com/K-256/planning_center_thingy/refs/heads/main/pco_config.json")
         time.sleep(2)
         restart()
 
@@ -162,6 +162,12 @@ class color:
 
 
 service_list = [] #[[service type, plan number, dates+title]]
+
+def slack_send_webhook(message):
+    if cfg['slack_webhook_enable']:
+        headers = { 'Content-type': 'application/json' }
+        json_data = { 'text': str(message) }
+        response = requests.post(str(cfg['slack_webhook_url']), headers=headers, json=json_data)
 
 system_name = socket.gethostname()
 
@@ -402,6 +408,7 @@ def hyperdeck_interface(hyperdeck_ip, hyperdeck_port):
         sigmasock.connect((hyperdeck_ip, hyperdeck_port))
         print("connected")
         internal_state = "unknown"
+        internal_last_state = "unknown"
         time.sleep(2)
         while True:
             command = "transport info\n"
@@ -410,7 +417,13 @@ def hyperdeck_interface(hyperdeck_ip, hyperdeck_port):
             r = response.decode('utf-8')
             r = r.split("\n")
             if "208 transport info" in r[0]:
-                hyperdeck_state[hyperdeck_ip] = r[1][:-1]
+                internal_state = r[1][:-1]
+                if "record" in internal_last_state and "record" not in internal_state:
+                    slack_send_webhook(f"HYPERDECK {hyperdeck_ip} RECORD STOPPED")
+                elif "record" not in internal_last_state and "record" in internal_state:
+                    slack_send_webhook(f"HYPERDECK {hyperdeck_ip} RECORD STARTED")
+                internal_last_state = r[1][:-1]
+                hyperdeck_state[hyperdeck_ip] = internal_state
                 if hyperdeck_control == 1 and "record" not in r[1]:
                     sigmasock.sendall("record\n".encode('utf-8'))
                 if hyperdeck_control == 0 and "record" in r[1]:
@@ -545,10 +558,10 @@ def live_timing_front():
                         plan_ok = 1
                         break
                 # HyperDeck triggers
-                if time_remaining < cfg['hyperdeck_trigger_pre']+preroll_offset and service_time_name == None:
+                if time_remaining < cfg['hyperdeck_trigger_pre']+preroll_offset and service_time_name == None and hyperdeck_control != 1:
                     # if past hyperdeck trigger point and an actual service time
                     hyperdeck_control = 1
-                if time_since_service_stop > cfg['hyperdeck_trigger_post']:
+                if time_since_service_stop > cfg['hyperdeck_trigger_post'] and hyperdeck_control != 0:
                     # If been longer than trigger tail stop hyperdecks
                     hyperdeck_control = 0
                 # if plan not OK then show no service message
@@ -562,8 +575,8 @@ def live_timing_front():
                     #print normal time data only if plan good
                     # if cfg['blockprint']:
                     t = blocktext(f"{time_remaining_min}:{time_remaining_sec}", color.YELLOW+color.BK_YELLOW) if cfg['blockprint'] else ''
-                    t = f"{color.YELLOW}{time_remaining_min}:{time_remaining_sec}{color.RESET}" if not cfg['blockprint'] else t
-                    t += f"\n{color.BLUE+"\n".join(current_plan_name.split("-"))+color.RESET}\n"
+                    t = f"{color.YELLOW}{time_remaining_min}:{time_remaining_sec}{color.RESET}\n" if not cfg['blockprint'] else t
+                    t += color.BLUE+"\n".join(current_plan_name.split("-"))+color.RESET+"\n"
                     t += f"{color.BOLD}COMPUTER: {color.CYAN}{system_name}{color.RESET}\n"
                     t += f"{color.YELLOW}{color.BOLD}----------P/S---------{color.RESET}\n"
                     t += f"{color.MAGENTA}NEXT TIME: {color.RESET}{service_time}\n"
@@ -596,9 +609,9 @@ def live_timing_front():
                     t += f"{color.BOLD}COMPUTER: {color.CYAN}{system_name}{color.RESET}\n"
                 hyperdeck_control = 1 if hyperdeck_control != 1 else hyperdeck_control #set hyperdeck control if not already set
                 current_item_name = other_item_time_data['title']
-            t += f"\n - HYPERDECK - \n{"\n".join(i+" - "+hyperdeck_state[i] for i in hyperdeck_state)}" if cfg['hyperdeck_control_enable'] else ''
+            t += f"\n - HYPERDECK - \n"+"\n".join(i+" - "+hyperdeck_state[i] for i in hyperdeck_state) if cfg['hyperdeck_control_enable'] else ''
             t += f"\nHDC: {hyperdeck_control} - TSS: {time_since_service_stop} - HDT: {preroll_offset}+{cfg['hyperdeck_trigger_pre']}" if cfg['hyperdeck_control_enable'] else ''
-            t += f"\n\n{last_error} - {last_error}" if cfg['show_last_error'] else ''
+            t += f"\n\nlast_error - {last_error}" if cfg['show_last_error'] else ''
             if t != previous_t:
                 clear()
                 print(t)
