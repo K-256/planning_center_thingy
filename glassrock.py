@@ -389,7 +389,7 @@ plan_times = []
 plan_times_update_time = 0
 service_items = {}
 
-preroll_offset = int(cfg['preroll_offset_default'])
+preroll_offset = int(cfg['preroll_offset_default']) #set default for if no service pre item found
 time_remaining = 0
 preservice_mode = 1
 
@@ -403,6 +403,7 @@ hyperdeck_state = {} # state dict for hyperdecks
 time_since_service_stop = 0
 
 def hyperdeck_interface(hyperdeck_ip, hyperdeck_port):
+    hyperdeck_state[hyperdeck_ip] = "DISCON"
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sigmasock:
         print(f"CONNECTING TO HYPERDECK {hyperdeck_ip} port {hyperdeck_port}")
         sigmasock.connect((hyperdeck_ip, hyperdeck_port))
@@ -558,10 +559,10 @@ def live_timing_front():
                         plan_ok = 1
                         break
                 # HyperDeck triggers
-                if time_remaining < cfg['hyperdeck_trigger_pre']+preroll_offset and service_time_name == None and hyperdeck_control != 1:
+                if time_remaining < cfg['hyperdeck_trigger_pre']+preroll_offset and service_time_name == None:
                     # if past hyperdeck trigger point and an actual service time
                     hyperdeck_control = 1
-                if time_since_service_stop > cfg['hyperdeck_trigger_post'] and hyperdeck_control != 0:
+                if time_since_service_stop > cfg['hyperdeck_trigger_post']:
                     # If been longer than trigger tail stop hyperdecks
                     hyperdeck_control = 0
                 # if plan not OK then show no service message
