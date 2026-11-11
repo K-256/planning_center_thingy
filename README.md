@@ -36,6 +36,13 @@ Planning Center Live CLI Tool
 - Enable in ProPresenter settings (under "Network" box)
 - Set machine IP and port in pco_config.json to match
   - NOTE: can set IP to 127.0.0.1 if on the computer running ProPresenter
-- Make sure your stage display has a text box that shows the stage mesage
+- Make sure your stage display has a text box that shows the stage message
+
+# BlackMagic Hyperdeck connection
+- Enable network remote control in settings
+  - NOTE: you can do this remotely through the TCP connection
+  - [BlackMagic Hyperdeck Ethernet API doc](https://documents.blackmagicdesign.com/DeveloperManuals/HyperDeckEthernetProtocol.pdf)
+- Set Hyperdeck IP addresses in the pco_config.json file
+
 # Why is it called glass rock?
 - A glass rock looks cool and if you drop it, it explodes
